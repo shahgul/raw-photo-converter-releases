@@ -29,7 +29,7 @@ The `0.0.7-alpha` source is pinned to private development commit:
 
 This is an early tester build. The core conversion path, native builds, unit tests, and emulator instrumentation are working, but broader real-device validation is still in progress. Feedback from different Sony cameras, lenses, Android phones, storage providers, portrait/landscape files, and larger batches is especially useful.
 
-For installable builds, use this repository's **GitHub Releases** page. APK binaries should not be committed directly to the source tree.
+For installable builds, use this repository's [public GitHub prerelease](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.7-alpha). APK binaries should not be committed directly to the source tree.
 
 ## Repository policy
 
