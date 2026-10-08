@@ -1,20 +1,22 @@
 # Raw Photo Converter
 
-A local-first Android RAW photo converter focused first on Sony ARW files.
+A local-first Android RAW photo converter for Sony ARW and Canon CR2/CR3 files.
 
 ## Current public version
 
-**Android 0.0.7-alpha**
+**Android 0.0.8-alpha**
 
 This repository is a curated public source snapshot of the tested alpha. It is **not** the development repository and does not automatically track ongoing private development.
 
-The `0.0.7-alpha` source is pinned to private development commit:
+The `0.0.8-alpha` source is pinned to private development commit:
 
-`24d7cc18f6551fdf32eda4b621d6057532d69788`
+`fea7ba94bfe2c48c225e48e3647c93f312d602a8`
+
+The signed APK was built from Android implementation commit `3d421ae48ac516a0cf3d85b944aa40bec86cd559`; the pinned source commit adds the selected license and publication documentation without changing the app implementation.
 
 ## What it does
 
-- develops Sony ARW files locally on Android
+- develops Sony ARW and Canon CR2/CR3 files locally on Android
 - offers the camera embedded-JPEG path as an alternative
 - keeps the original aspect ratio and never crops implicitly
 - supports original-resolution or 4000 px long-edge output
@@ -22,14 +24,17 @@ The `0.0.7-alpha` source is pinned to private development commit:
 - preserves supported camera/lens/exposure/GPS/copyright metadata
 - normalizes output orientation
 - supports single files and sequential folder batches
+- retries individual or all failed files using the original folder and conversion recipe
+- shows output behavior in an information dialog without shifting the bottom controls
+- uses the same square launcher icon as the Windows app
 - uses Android Storage Access Framework rather than broad storage permission
 - keeps processing on-device; originals are not modified
 
 ## Alpha status
 
-This is an early tester build. The core conversion path, native builds, unit tests, and emulator instrumentation are working, but broader real-device validation is still in progress. Feedback from different Sony cameras, lenses, Android phones, storage providers, portrait/landscape files, and larger batches is especially useful.
+This is an early tester build. The core conversion path, native builds, unit tests, and emulator instrumentation are working. Three Canon CR3 samples and failed-file recovery were verified end to end on an API 35 x86_64 emulator; physical-device validation remains pending. Feedback from different cameras, lenses, Android phones, storage providers, portrait/landscape files, and larger batches is especially useful.
 
-For installable builds, use this repository's [public GitHub prerelease](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.7-alpha). APK binaries should not be committed directly to the source tree.
+For installable builds, use this repository's [public GitHub prerelease](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.8-alpha). APK binaries should not be committed directly to the source tree.
 
 ## Repository policy
 
@@ -43,4 +48,4 @@ The Android app uses third-party components including LibRaw, Geist, and Lucide.
 
 ## Project license
 
-A project-wide license has not yet been selected. Until one is added, the source is published for transparency and review but no additional reuse rights are granted beyond rights provided by applicable law and the separately licensed third-party components.
+Project-owned source code is licensed under the [Mozilla Public License 2.0 (MPL-2.0)](https://www.mozilla.org/MPL/2.0/); see [LICENSE](LICENSE). Third-party components retain their own licenses and notices. The converter core remains free to use; optional voluntary Buy Me a Coffee support is planned and will not unlock features. A support link will be added after the creator page is set up.

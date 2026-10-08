@@ -97,17 +97,18 @@ internal fun ProcessingScreen(
     }
     val elapsed = if (batch.startedAtMs == 0L) null else
         ((batch.finishedAtMs ?: now) - batch.startedAtMs).coerceAtLeast(0)
-    val saved = batch.results.count { it.output != null }
-    val skipped = batch.results.count { it.skipped }
-    val failed = batch.results.count { it.error != null }
+    val processedResults = batch.processedResults
+    val saved = processedResults.count { it.output != null }
+    val skipped = processedResults.count { it.skipped }
+    val failed = processedResults.count { it.error != null }
     val progressFraction = if (batch.total > 1) {
-        (batch.results.size.toFloat() / batch.total).coerceIn(0f, 1f)
+        (processedResults.size.toFloat() / batch.total).coerceIn(0f, 1f)
     } else {
         null
     }
     val title = batch.sourceLabel
         ?: batch.current
-        ?: batch.results.lastOrNull()?.source
+        ?: processedResults.lastOrNull()?.source
         ?: "Conversion"
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
@@ -165,7 +166,7 @@ internal fun ProcessingScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            ProgressChip("${batch.results.size} / ${batch.total}")
+                            ProgressChip("${processedResults.size} / ${batch.total}")
                             if (progressFraction != null) {
                                 ProgressChip("${(progressFraction * 100).toInt()}%")
                             } else {
@@ -315,7 +316,7 @@ internal fun ProcessingScreen(
                                                             )
                                                             add("DESTINATION" to it.destination)
                                                         }
-                                                        add("PROCESSED" to "${batch.results.size} / ${batch.total}")
+                                                        add("PROCESSED" to "${processedResults.size} / ${batch.total}")
                                                         add("SAVED" to "$saved")
                                                         add("SKIPPED" to "$skipped")
                                                         add("FAILED" to "$failed")

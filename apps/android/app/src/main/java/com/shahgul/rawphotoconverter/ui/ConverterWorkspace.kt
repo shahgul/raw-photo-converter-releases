@@ -32,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -183,10 +184,10 @@ internal fun ConverterWorkspace(
                         if (!compactHeight || batch.running) {
                             Text(
                                 when {
-                                    batch.running -> "${batch.results.size} of ${batch.total} processed · ${batch.phase}"
+                                    batch.running -> "${batch.processedResults.size} of ${batch.total} processed · ${batch.phase}"
                                     loading -> "Reading your photos…"
                                     source == null -> "Choose a RAW photo or folder to begin"
-                                    count == 0 -> "No Sony ARW files found in this folder"
+                                    count == 0 -> "No supported RAW files found in this folder"
                                     outputLabel == null -> "Choose a folder for your JPEGs"
                                     else -> "Originals stay untouched · existing JPEGs are skipped"
                                 },
@@ -295,7 +296,7 @@ private fun SourceHero(
                     key == "empty" -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Add photos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "A Sony RAW, or a folder of ARWs. Everything stays on your device.",
+                            "Sony ARW or Canon CR2/CR3 photos. Everything stays on your device.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = colors.onSurfaceVariant,
                         )
@@ -306,53 +307,55 @@ private fun SourceHero(
                             is RawSourceSummary.Single -> 1
                             is RawSourceSummary.Folder -> selected.rawCount
                         }
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Surface(
-                                color = colors.primaryContainer,
-                                contentColor = colors.onPrimaryContainer,
-                                shape = shapes.medium,
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    "$photoCount",
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontFamily = MeasurementFont,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    selected.label,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    when (selected) {
-                                        is RawSourceSummary.Single -> "1 RAW · ${formatSize(selected.sizeBytes)}"
-                                        is RawSourceSummary.Folder -> "${selected.rawCount} RAW · ${formatSize(selected.totalBytes)}"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant,
-                                    fontFamily = MeasurementFont,
-                                )
-                                if (selected is RawSourceSummary.Single) {
-                                    selected.metadata.camera?.let {
-                                        Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                Surface(
+                                    color = colors.primaryContainer,
+                                    contentColor = colors.onPrimaryContainer,
+                                    shape = shapes.medium,
+                                ) {
+                                    Text(
+                                        "$photoCount",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontFamily = MeasurementFont,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        selected.label,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        when (selected) {
+                                            is RawSourceSummary.Single -> "1 RAW · ${formatSize(selected.sizeBytes)}"
+                                            is RawSourceSummary.Folder -> "${selected.rawCount} RAW · ${formatSize(selected.totalBytes)}"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant,
+                                        fontFamily = MeasurementFont,
+                                    )
+                                    if (selected is RawSourceSummary.Single) {
+                                        selected.metadata.camera?.let {
+                                            Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }
-                        }
-                        if (selected is RawSourceSummary.Folder) {
-                            Text(
-                                "This folder only — subfolders aren't included.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.onSurfaceVariant,
-                            )
+                            if (selected is RawSourceSummary.Folder) {
+                                Text(
+                                    "This folder only — subfolders aren't included.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -402,10 +405,43 @@ private fun RecipePanel(
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
-    var details by rememberSaveable { mutableStateOf(false) }
+    var showOutputInfo by rememberSaveable { mutableStateOf(false) }
     val recipe = remember(mode, resolution) { ConversionRecipe(mode = mode, maxLongEdge = resolution.maxEdge) }
+    if (showOutputInfo) {
+        AlertDialog(
+            onDismissRequest = { showOutputInfo = false },
+            title = { Text("How JPEG output works") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        when (mode) {
+                            ConversionMode.DEVELOP_RAW -> "Develop creates a JPEG from the RAW sensor data."
+                            ConversionMode.CAMERA_LOOK -> "Camera Look starts from the camera's embedded JPEG preview when available. Its image data is kept without recompression when it fits the selected resolution and ${recipe.targetBytes / 1048576} MiB target; otherwise, it is resized or re-encoded."
+                        },
+                    )
+                    Text("No crop or upscaling. The source aspect ratio is preserved. Standard caps the long edge at ${OutputResolution.STANDARD.maxEdge} px; Original keeps the available resolution and may use more memory.")
+                    Text("When encoding is needed, quality goes from Q${recipe.maxQuality} down to Q${recipe.minQuality} to try to meet the ${recipe.targetBytes / 1048576} MiB target. Q${recipe.minQuality} is the floor, so image quality takes priority over the size target.")
+                    Text("When enabled, supported EXIF/XMP is kept. Maker notes and binary IPTC aren't copied.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOutputInfo = false }) { Text("Done") }
+            },
+        )
+    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Recipe", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Recipe", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            IconButton(
+                onClick = { showOutputInfo = true },
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "About JPEG output" },
+            ) {
+                Icon(painterResource(R.drawable.ic_info), contentDescription = null, tint = colors.onSurfaceVariant)
+            }
+        }
         Surface(
             onClick = onOutput,
             enabled = enabled,
@@ -453,15 +489,6 @@ private fun RecipePanel(
                     label = { Text("Camera look") },
                 )
             }
-            Text(
-                if (mode == ConversionMode.CAMERA_LOOK) {
-                    "Uses the embedded JPEG preview when available."
-                } else {
-                    "Develops sensor data for full RAW quality."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resolution", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
@@ -481,21 +508,6 @@ private fun RecipePanel(
                     label = { Text("Original") },
                 )
             }
-            Text(
-                if (resolution == OutputResolution.ORIGINAL) {
-                    "Keeps available resolution. Larger RAW outputs use more memory."
-                } else {
-                    "Up to 4000 px on the long edge."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
-            Text(
-                "${if (recipe.maxLongEdge == 0) "Original resolution" else "${recipe.maxLongEdge} px max"} · ${recipe.targetBytes / 1048576} MiB target",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = MeasurementFont,
-                color = colors.onSurfaceVariant,
-            )
         }
         Surface(color = colors.surfaceContainer, shape = shapes.large, modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -513,24 +525,6 @@ private fun RecipePanel(
                     modifier = Modifier.semantics { contentDescription = "Keep metadata, including GPS location" },
                 )
             }
-        }
-        TextButton(
-            onClick = { details = !details },
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier.heightIn(min = 48.dp),
-        ) {
-            Text(if (details) "Hide output details" else "Output details")
-        }
-        AnimatedVisibility(
-            visible = details,
-            enter = fadeIn(motionTween(180)),
-            exit = fadeOut(motionTween(140)),
-        ) {
-            Text(
-                "Original aspect ratio. No crop or upscaling. Camera JPEG pixels are copied without recompression when they fit the selected limit and size target; otherwise they are resized/re-encoded. Quality Q${recipe.maxQuality} down to Q${recipe.minQuality}; the quality floor takes priority if ${recipe.targetBytes / 1048576} MiB isn't possible. Supported EXIF/XMP is kept when enabled; maker notes and binary IPTC aren't copied.",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
         }
     }
 }

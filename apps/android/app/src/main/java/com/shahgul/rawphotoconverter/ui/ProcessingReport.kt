@@ -10,7 +10,7 @@ internal fun resultDescription(result: ConversionResult): String = when {
 }
 internal fun conversionReport(batch: BatchState) = buildString {
     appendLine("Raw Photo Converter - ${batch.phase}")
-    appendLine("${batch.results.size} / ${batch.total} processed")
+    appendLine("${batch.processedResults.size} / ${batch.total} processed")
     batch.settings?.let {
         appendLine("${modeLabel(it.mode)} / ${resolutionLabel(it.resolution)}")
         appendLine("Destination: ${it.destination}")
@@ -18,7 +18,7 @@ internal fun conversionReport(batch: BatchState) = buildString {
     }
     if (batch.startedAtMs > 0 && batch.finishedAtMs != null) appendLine("Elapsed: ${formatElapsed(batch.finishedAtMs - batch.startedAtMs)}")
     batch.message?.let(::appendLine)
-    for (result in batch.results) appendLine("${result.source}: ${resultDescription(result)}")
+    for (result in batch.processedResults) appendLine("${result.source}: ${resultDescription(result)}")
     appendLine("Recent events (up to 200):")
     for (event in batch.events) appendLine("${formatElapsed(event.elapsedMs)} ${event.message}")
 }

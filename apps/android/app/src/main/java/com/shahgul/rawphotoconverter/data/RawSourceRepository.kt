@@ -32,14 +32,14 @@ sealed interface RawSourceSummary {
 }
 
 data class RawMetadata(
-    val camera: String?,
-    val lens: String?,
-    val iso: String?,
-    val exposure: String?,
-    val aperture: String?,
-    val focalLength: String?,
-    val dateTimeOriginal: String?,
-    val orientation: Int?,
+    val camera: String? = null,
+    val lens: String? = null,
+    val iso: String? = null,
+    val exposure: String? = null,
+    val aperture: String? = null,
+    val focalLength: String? = null,
+    val dateTimeOriginal: String? = null,
+    val orientation: Int? = null,
 )
 
 class RawSourceRepository(private val context: Context) {
@@ -55,27 +55,34 @@ class RawSourceRepository(private val context: Context) {
 
     suspend fun inspectRaw(uri: Uri): RawSourceSummary.Single = withContext(Dispatchers.IO) {
         val (name, size) = queryNameAndSize(uri)
-        ConversionPolicy.jpegName(name ?: error("The selected provider did not supply a filename."))
+        val rawName = name ?: error("The selected provider did not supply a filename.")
+        ConversionPolicy.jpegName(rawName)
         val metadata = resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
-            val exif = ExifInterface(descriptor.fileDescriptor)
-            RawMetadata(
-                camera = exif.getAttribute(ExifInterface.TAG_MODEL),
-                lens = exif.getAttribute(ExifInterface.TAG_LENS_MODEL),
-                iso = exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)
-                    ?: exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS),
-                exposure = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME),
-                aperture = exif.getAttribute(ExifInterface.TAG_F_NUMBER),
-                focalLength = exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH),
-                dateTimeOriginal = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL),
-                orientation = exif.getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_UNDEFINED,
-                ),
-            )
+            try {
+                val exif = ExifInterface(descriptor.fileDescriptor)
+                RawMetadata(
+                    camera = exif.getAttribute(ExifInterface.TAG_MODEL),
+                    lens = exif.getAttribute(ExifInterface.TAG_LENS_MODEL),
+                    iso = exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)
+                        ?: exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS),
+                    exposure = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME),
+                    aperture = exif.getAttribute(ExifInterface.TAG_F_NUMBER),
+                    focalLength = exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH),
+                    dateTimeOriginal = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL),
+                    orientation = exif.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_UNDEFINED,
+                    ),
+                )
+            } catch (error: Exception) {
+                if (!rawName.endsWith(".cr3", ignoreCase = true)) throw error
+                Log.i("RawSource", "ExifInterface cannot inspect CR3 metadata before conversion", error)
+                RawMetadata()
+            }
         } ?: error("The selected RAW cannot be read. Select it again.")
 
         RawSourceSummary.Single(
-            label = name ?: "Selected RAW",
+            label = rawName,
             uri = uri,
             sizeBytes = size,
             metadata = metadata,
@@ -88,7 +95,7 @@ class RawSourceRepository(private val context: Context) {
         check(root.isDirectory && root.canRead()) { "The selected folder is not readable. Select it again." }
 
         val raws = root.listFiles().filter { file ->
-            file.isFile && file.name?.endsWith(".arw", ignoreCase = true) == true
+            file.isFile && file.name?.let(ConversionPolicy::isSupportedRaw) == true
         }
 
         RawSourceSummary.Folder(
@@ -105,7 +112,7 @@ class RawSourceRepository(private val context: Context) {
         root.listFiles().mapNotNull { file ->
             cancellation.check()
             val name = file.name
-            if (file.isFile && name?.endsWith(".arw", ignoreCase = true) == true) RawInput(file.uri, name) else null
+            if (file.isFile && name?.let(ConversionPolicy::isSupportedRaw) == true) RawInput(file.uri, name) else null
         }.sortedBy { it.label.lowercase(java.util.Locale.ROOT) }
     }
 

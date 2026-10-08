@@ -20,9 +20,10 @@ object JpegEncoder {
         recipe: ConversionRecipe,
         cancellation: ConversionCancellation,
         orientation: Int = 1,
+        sourceMetadata: ExifInterface? = null,
         phase: (String) -> Unit,
     ): QualityChoice {
-        val metadata = if (recipe.preserveMetadata) ExifInterface(source) else null
+        val metadata = if (recipe.preserveMetadata) sourceMetadata ?: ExifInterface(source) else null
         return ConversionPolicy.chooseQuality(recipe) { quality ->
             cancellation.check()
             phase("Optimizing JPEG · Q$quality")

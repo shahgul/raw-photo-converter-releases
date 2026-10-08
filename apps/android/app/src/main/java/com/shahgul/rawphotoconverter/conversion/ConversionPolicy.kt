@@ -25,6 +25,11 @@ data class PixelSize(val width: Int, val height: Int)
 data class QualityChoice(val quality: Int, val bytes: Long, val targetMet: Boolean)
 
 object ConversionPolicy {
+    private val supportedRawExtensions = setOf("arw", "cr2", "cr3")
+
+    fun isSupportedRaw(name: String): Boolean =
+        name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) in supportedRawExtensions
+
     fun fit(width: Int, height: Int, maxLongEdge: Int): PixelSize {
         require(width > 0 && height > 0 && maxLongEdge >= 0)
         val scale = if (maxLongEdge == 0) 1.0 else minOf(1.0, maxLongEdge.toDouble() / max(width, height))
@@ -45,8 +50,8 @@ object ConversionPolicy {
     }
 
     fun jpegName(source: String): String {
-        require(source.endsWith(".arw", ignoreCase = true)) { "Select a Sony .ARW file." }
-        val stem = source.dropLast(4)
+        require(isSupportedRaw(source)) { "Select a supported RAW file (.ARW, .CR2 or .CR3)." }
+        val stem = source.substringBeforeLast('.')
         require(stem.isNotBlank() && '/' !in stem && '\\' !in stem) { "Invalid RAW filename." }
         return "$stem.jpg"
     }

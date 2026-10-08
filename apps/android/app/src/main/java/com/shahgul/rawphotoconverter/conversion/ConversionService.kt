@@ -29,7 +29,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.CancellationException
 
-data class BatchSettings(val mode: ConversionMode, val resolution: OutputResolution, val metadata: Boolean, val destination: String)
+data class BatchSettings(
+    val mode: ConversionMode,
+    val resolution: OutputResolution,
+    val metadata: Boolean,
+    val destination: String,
+    val outputUri: String? = null,
+)
 data class BatchEvent(val elapsedMs: Long, val message: String)
 
 data class BatchState(
@@ -38,6 +44,8 @@ data class BatchState(
     val phase: String = "Ready",
     val total: Int = 0,
     val results: List<ConversionResult> = emptyList(),
+    val retrying: Boolean = false,
+    val attemptResults: List<ConversionResult> = emptyList(),
     val message: String? = null,
     val startedAtMs: Long = 0,
     val finishedAtMs: Long? = null,
@@ -45,6 +53,14 @@ data class BatchState(
     val events: List<BatchEvent> = emptyList(),
     /** Stable source name for the processing header (file or folder label). */
     val sourceLabel: String? = null,
+) {
+    val processedResults: List<ConversionResult>
+        get() = if (retrying) attemptResults else results
+}
+
+internal data class RetryRequest(
+    val inputs: List<RawInput>,
+    val previous: BatchState,
 )
 
 object ConversionStore {
@@ -52,6 +68,7 @@ object ConversionStore {
     private val mutable = MutableStateFlow(BatchState())
     val state = mutable.asStateFlow()
     private var initialized = false
+    private var pendingRetry: RetryRequest? = null
 
     @Synchronized fun initialize(context: Context) {
         if (initialized) return
@@ -61,14 +78,16 @@ object ConversionStore {
         }
     }
 
-    @Synchronized internal fun publish(state: BatchState) {
+    @Synchronized internal fun publish(state: BatchState, logResultChanges: Boolean = true) {
         val previous = mutable.value
         val fresh = state.running && !previous.running
         var events = if (fresh) emptyList() else previous.events
         val descriptions = mutableListOf<String>()
+        val previousProcessed = previous.processedResults
+        val currentProcessed = state.processedResults
         if (fresh || previous.phase != state.phase || previous.current != state.current)
             descriptions += listOfNotNull(state.current, state.phase).joinToString(" - ")
-        if (!fresh && state.results.size > previous.results.size) state.results.drop(previous.results.size).forEach {
+        if (logResultChanges && !fresh && currentProcessed.size > previousProcessed.size) currentProcessed.drop(previousProcessed.size).forEach {
             descriptions += "${it.source}: " + when {
                 it.error != null -> "Failed - ${it.error}"
                 it.skipped -> "Skipped - JPEG exists"
@@ -80,6 +99,25 @@ object ConversionStore {
         events = (events + descriptions.map { BatchEvent(if (state.startedAtMs > 0) (now - state.startedAtMs).coerceAtLeast(0) else 0, it) }).takeLast(200)
         mutable.value = state.copy(events = events,
             finishedAtMs = if (!state.running && state.startedAtMs > 0) state.finishedAtMs ?: now else state.finishedAtMs)
+    }
+
+    @Synchronized internal fun createRetryRequest(sourceUri: String? = null): RetryRequest? {
+        val previous = mutable.value
+        if (previous.running || pendingRetry != null) return null
+        val settings = previous.settings ?: return null
+        if (settings.outputUri.isNullOrBlank()) return null
+        val failed = RetryPolicy.failed(previous.results, sourceUri)
+        if (failed.isEmpty()) return null
+        return RetryRequest(
+            inputs = failed.map { result -> RawInput(Uri.parse(requireNotNull(result.sourceUri)), result.source) },
+            previous = previous,
+        ).also { pendingRetry = it }
+    }
+
+    @Synchronized internal fun takeRetryRequest(): RetryRequest? = pendingRetry.also { pendingRetry = null }
+
+    @Synchronized internal fun discardRetryRequest(request: RetryRequest) {
+        if (pendingRetry === request) pendingRetry = null
     }
 }
 
@@ -111,10 +149,32 @@ class ConversionService : Service() {
             else stopSelf()
             return START_NOT_STICKY
         }
-        if (active || intent == null) return START_NOT_STICKY
+        if (active || intent == null) {
+            if (intent?.action == RETRY_FAILED) {
+                ConversionStore.takeRetryRequest()?.let { request ->
+                    ConversionStore.publish(
+                        request.previous.copy(message = "The previous conversion is still finishing. Try again shortly."),
+                        logResultChanges = false,
+                    )
+                }
+            }
+            return START_NOT_STICKY
+        }
+        val retryRequest = if (intent.action == RETRY_FAILED) ConversionStore.takeRetryRequest() else null
+        if (intent.action == RETRY_FAILED && retryRequest == null) {
+            Log.w("RawConversion", "Retry request was missing or already consumed")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         val ownership = ConversionStore.gate.tryAcquire()
         if (ownership == null) {
             Log.w("RawConversion", "Conversion is still owned by a worker; rejecting a second start")
+            retryRequest?.let {
+                ConversionStore.publish(
+                    it.previous.copy(message = "The previous conversion is still cleaning up. Try again shortly."),
+                    logResultChanges = false,
+                )
+            }
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -123,12 +183,25 @@ class ConversionService : Service() {
         val token = ConversionCancellation()
         cancellation = token
         active = true
-        val initial = BatchState(
-            running = true,
-            phase = "Reading source",
-            startedAtMs = SystemClock.elapsedRealtime(),
-            sourceLabel = intent.getStringExtra(LABEL),
-        )
+        val initial = if (retryRequest == null) {
+            BatchState(
+                running = true,
+                phase = "Reading source",
+                startedAtMs = SystemClock.elapsedRealtime(),
+                sourceLabel = intent.getStringExtra(LABEL),
+            )
+        } else {
+            BatchState(
+                running = true,
+                phase = if (retryRequest.inputs.size == 1) "Retrying failed file" else "Retrying failed files",
+                total = retryRequest.inputs.size,
+                results = retryRequest.previous.results,
+                retrying = true,
+                startedAtMs = SystemClock.elapsedRealtime(),
+                settings = retryRequest.previous.settings,
+                sourceLabel = retryRequest.previous.sourceLabel,
+            )
+        }
         ConversionStore.publish(initial)
         val type = when {
             Build.VERSION.SDK_INT >= 35 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
@@ -143,7 +216,10 @@ class ConversionService : Service() {
             Log.i("RawConversion", "Foreground conversion started with type=$type")
         } catch (error: Exception) {
             Log.e("RawConversion", "Unable to start foreground conversion", error)
-            ConversionStore.publish(initial.copy(running = false, phase = "Failed", message = "Unable to start visible conversion: ${error.message}"))
+            val failure = "Unable to start visible conversion: ${error.message}"
+            val failedState = retryRequest?.previous?.copy(phase = "Failed", message = failure)
+                ?: initial.copy(running = false, phase = "Failed", message = failure)
+            ConversionStore.publish(failedState, logResultChanges = retryRequest == null)
             active = false
             ConversionStore.gate.release(ownership)
             stopSelf()
@@ -158,27 +234,42 @@ class ConversionService : Service() {
             var state = initial
             try {
                 engine.cleanInterruptedTemps()
-                val sourceUri = Uri.parse(requireNotNull(intent.getStringExtra(SOURCE)))
-                val outputUri = Uri.parse(requireNotNull(intent.getStringExtra(OUTPUT)))
+                val settings = retryRequest?.previous?.settings
+                val outputUri = Uri.parse(
+                    settings?.outputUri ?: requireNotNull(intent.getStringExtra(OUTPUT)),
+                )
                 val folder = DocumentFile.fromTreeUri(this@ConversionService, outputUri)
                     ?: error("The output folder cannot be opened. Select it again.")
                 val repository = RawSourceRepository(applicationContext)
-                val inputs = if (intent.getBooleanExtra(FOLDER, false)) {
-                    repository.listFolderRaws(sourceUri, token)
+                val inputs = if (retryRequest != null) {
+                    retryRequest.inputs
                 } else {
-                    listOf(RawInput(sourceUri, requireNotNull(intent.getStringExtra(LABEL))))
+                    val sourceUri = Uri.parse(requireNotNull(intent.getStringExtra(SOURCE)))
+                    if (intent.getBooleanExtra(FOLDER, false)) {
+                        repository.listFolderRaws(sourceUri, token)
+                    } else {
+                        listOf(RawInput(sourceUri, requireNotNull(intent.getStringExtra(LABEL))))
+                    }
                 }
                 token.check()
-                check(inputs.isNotEmpty()) { "No Sony ARW files were found in the selected folder." }
-                state = state.copy(total = inputs.size)
+                check(inputs.isNotEmpty()) { "No supported RAW files were found in the selected folder." }
+                val batchSettings = settings ?: run {
+                    val resolution = OutputResolution.valueOf(intent.getStringExtra(RESOLUTION) ?: OutputResolution.STANDARD.name)
+                    BatchSettings(
+                        mode = ConversionMode.valueOf(intent.getStringExtra(MODE) ?: ConversionMode.DEVELOP_RAW.name),
+                        resolution = resolution,
+                        metadata = intent.getBooleanExtra(METADATA, true),
+                        destination = folder.name ?: "Selected output folder",
+                        outputUri = outputUri.toString(),
+                    )
+                }
+                state = state.copy(total = inputs.size, settings = batchSettings)
                 update(state)
-                val recipe = ConversionRecipe(preserveMetadata = intent.getBooleanExtra(METADATA, true),
-                    mode = ConversionMode.valueOf(intent.getStringExtra(MODE) ?: ConversionMode.DEVELOP_RAW.name),
-                    maxLongEdge = OutputResolution.valueOf(intent.getStringExtra(RESOLUTION) ?: OutputResolution.STANDARD.name).maxEdge)
-                state = state.copy(settings = BatchSettings(recipe.mode,
-                    OutputResolution.valueOf(intent.getStringExtra(RESOLUTION) ?: OutputResolution.STANDARD.name),
-                    recipe.preserveMetadata, folder.name ?: "Selected output folder"))
-                update(state)
+                val recipe = ConversionRecipe(
+                    preserveMetadata = batchSettings.metadata,
+                    mode = batchSettings.mode,
+                    maxLongEdge = batchSettings.resolution.maxEdge,
+                )
                 for (input in inputs) {
                     token.check()
                     state = state.copy(current = input.label)
@@ -192,15 +283,19 @@ class ConversionService : Service() {
                         throw error
                     } catch (error: Exception) {
                         Log.e("RawConversion", "Conversion failed for ${input.label}", error)
-                        ConversionResult(input.label, error = error.message ?: "RAW conversion failed.")
+                        ConversionResult(input.label, error = error.message ?: "RAW conversion failed.", sourceUri = input.uri.toString())
                     } catch (error: OutOfMemoryError) {
                         Log.e("RawConversion", "Insufficient memory for ${input.label}", error)
                         throw IllegalStateException("Not enough memory to develop ${input.label}. Retry a smaller RAW on this device.", error)
                     }
-                    state = state.copy(results = state.results + result)
+                    state = if (retryRequest != null) {
+                        state.copy(attemptResults = state.attemptResults + result)
+                    } else {
+                        state.copy(results = state.results + result)
+                    }
                     update(state)
                 }
-                val failed = state.results.count { it.error != null }
+                val failed = state.processedResults.count { it.error != null }
                 state = state.copy(running = false, current = null, phase = if (failed == 0) "Finished" else "Finished with errors")
             } catch (error: CancellationException) {
                 state = state.copy(running = false, phase = "Cancelled", message = "Completed JPEGs are kept. The unfinished file was not saved.")
@@ -210,7 +305,25 @@ class ConversionService : Service() {
             } finally {
                 preferences.edit().putBoolean("active", false).commit()
                 timeoutMessage?.let { state = state.copy(running = false, phase = "Interrupted", message = it) }
-                if (ConversionStore.gate.isOwner(ownership)) ConversionStore.publish(state)
+                val finalState = retryRequest?.let { request ->
+                    val merged = RetryPolicy.merge(request.previous.results, state.attemptResults)
+                    val phase = when (state.phase) {
+                        "Cancelled", "Failed", "Interrupted", "Stopping after timeout" -> state.phase
+                        else -> if (merged.any { it.error != null }) "Finished with errors" else "Finished"
+                    }
+                    state.copy(
+                        results = merged,
+                        retrying = false,
+                        attemptResults = emptyList(),
+                        total = request.previous.total,
+                        settings = request.previous.settings,
+                        sourceLabel = request.previous.sourceLabel,
+                        phase = phase,
+                    )
+                } ?: state
+                if (ConversionStore.gate.isOwner(ownership)) {
+                    ConversionStore.publish(finalState, logResultChanges = retryRequest == null)
+                }
                 active = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 // Cancel is another start command with a newer ID. Stopping
@@ -253,7 +366,7 @@ class ConversionService : Service() {
         val cancel = PendingIntent.getService(this, 1, Intent(this, ConversionService::class.java).setAction(CANCEL), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_gallery)
-            .setContentTitle("Raw Photo Converter · ${state.results.size}/${state.total}")
+            .setContentTitle("Raw Photo Converter · ${state.processedResults.size}/${state.total}")
             .setContentText(listOfNotNull(state.current, state.phase).joinToString(" · "))
             .setContentIntent(open)
             .setOngoing(true)
@@ -267,6 +380,7 @@ class ConversionService : Service() {
         private const val CHANNEL = "raw-conversion"
         private const val NOTIFICATION = 101
         private const val CANCEL = "com.shahgul.rawphotoconverter.CANCEL"
+        private const val RETRY_FAILED = "com.shahgul.rawphotoconverter.RETRY_FAILED"
         private const val SOURCE = "source"
         private const val OUTPUT = "output"
         private const val LABEL = "label"
@@ -284,6 +398,20 @@ class ConversionService : Service() {
 
         fun cancel(context: Context) {
             context.startService(Intent(context, ConversionService::class.java).setAction(CANCEL))
+        }
+
+        fun retryFailed(context: Context, sourceUri: String? = null): Boolean {
+            val request = ConversionStore.createRetryRequest(sourceUri) ?: return false
+            return try {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, ConversionService::class.java).setAction(RETRY_FAILED),
+                )
+                true
+            } catch (error: Exception) {
+                ConversionStore.discardRetryRequest(request)
+                throw error
+            }
         }
     }
 }

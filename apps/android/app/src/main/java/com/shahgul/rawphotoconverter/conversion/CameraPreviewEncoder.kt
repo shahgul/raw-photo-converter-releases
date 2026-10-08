@@ -25,8 +25,12 @@ object CameraPreviewEncoder {
         check(bounds.outWidth > 0 && bounds.outHeight > 0 && bounds.outWidth.toLong() * bounds.outHeight <= 50_000_000) {
             "The embedded camera JPEG is invalid or exceeds the 50 MP memory limit. Choose Develop RAW."
         }
-        val rawExif = ExifInterface(source)
         val previewExif = ExifInterface(ByteArrayInputStream(bytes))
+        val rawExif = if (recipe.preserveMetadata && !source.extension.equals("cr3", ignoreCase = true)) {
+            runCatching { ExifInterface(source) }.getOrNull() ?: previewExif
+        } else {
+            previewExif
+        }
         val orientation = previewExif.getAttributeInt(ExifInterface.TAG_ORIENTATION,
             rawExif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)).takeIf { it in 1..8 } ?: 1
         val dimensions = ConversionPolicy.fit(bounds.outWidth, bounds.outHeight, recipe.maxLongEdge)
@@ -52,7 +56,7 @@ object CameraPreviewEncoder {
         try {
             cancellation.check()
             resized = Bitmap.createScaledBitmap(bitmap, dimensions.width, dimensions.height, true)
-            return prepared(JpegEncoder.encode(resized, source, output, recipe, cancellation, orientation, phase))
+            return prepared(JpegEncoder.encode(resized, source, output, recipe, cancellation, orientation, rawExif, phase))
         } finally {
             if (resized !== bitmap) resized?.recycle()
             bitmap.recycle()

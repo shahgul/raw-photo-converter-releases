@@ -24,6 +24,7 @@ import com.shahgul.rawphotoconverter.conversion.ConversionMode
 import com.shahgul.rawphotoconverter.conversion.ConversionService
 import com.shahgul.rawphotoconverter.conversion.ConversionStore
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
+import com.shahgul.rawphotoconverter.conversion.RetryPolicy
 import com.shahgul.rawphotoconverter.data.RawSourceRepository
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
 import com.shahgul.rawphotoconverter.ui.theme.RawPhotoConverterTheme
@@ -224,10 +225,21 @@ fun RawConverterApp(processingRequest: Int = 0) {
                     onConvertMore = { go(AppScreen.Setup) },
                     onOpenJpeg = ::openJpeg,
                     onShareJpeg = ::shareJpeg,
-                    onRetryFailed = {
-                        if (!batch.running) requestConvert()
+                    onRetryFailed = { sourceUri ->
+                        if (!batch.running) {
+                            try {
+                                check(ConversionService.retryFailed(context, sourceUri)) {
+                                    "No failed RAW files are available to retry."
+                                }
+                                error = null
+                            } catch (failure: Exception) {
+                                error = failure.message ?: "Unable to retry failed RAW files."
+                            }
+                        }
                     },
-                    canRetry = !batch.running && source != null && outputUri != null,
+                    canRetry = !batch.running &&
+                        !batch.settings?.outputUri.isNullOrBlank() &&
+                        RetryPolicy.failed(batch.results).isNotEmpty(),
                     onViewProcessing = { go(AppScreen.Processing) },
                     themePreference = themePreference,
                     onThemeCycle = { setThemePreference(themePreference.next()) },

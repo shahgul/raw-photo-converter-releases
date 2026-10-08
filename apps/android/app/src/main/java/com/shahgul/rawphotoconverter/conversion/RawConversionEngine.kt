@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import androidx.exifinterface.media.ExifInterface
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CancellationException
@@ -20,6 +22,7 @@ data class ConversionResult(
     val skipped: Boolean = false,
     val error: String? = null,
     val cameraLook: Boolean = false,
+    val sourceUri: String? = null,
 )
 
 class RawConversionEngine(private val context: Context) {
@@ -33,7 +36,7 @@ class RawConversionEngine(private val context: Context) {
         cancellation.check()
         val name = ConversionPolicy.jpegName(input.label)
         fun existing() = folder.listFiles().any { it.name?.equals(name, ignoreCase = true) == true }
-        if (existing()) return ConversionResult(input.label, skipped = true)
+        if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
         check(folder.isDirectory && folder.canWrite()) { "The output folder is not writable. Select it again." }
         val work = File(context.cacheDir, "raw-conversion-${UUID.randomUUID()}")
         check(work.mkdir()) { "Unable to create temporary conversion storage." }
@@ -42,7 +45,8 @@ class RawConversionEngine(private val context: Context) {
         var saved = false
         try {
             phase("Reading RAW")
-            val raw = File(work, "source.arw")
+            val extension = input.label.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+            val raw = File(work, "source.$extension")
             context.contentResolver.openInputStream(input.uri)?.use { source ->
                 raw.outputStream().use { destination ->
                     val buffer = ByteArray(64 * 1024)
@@ -67,7 +71,28 @@ class RawConversionEngine(private val context: Context) {
                     phase("Developing RAW")
                     val bitmap = NativeRawDecoder.decode(raw.absolutePath, recipe.maxLongEdge, cancellation)
                     try {
-                        PreparedJpeg(JpegEncoder.encode(bitmap, raw, jpeg, recipe, cancellation, phase = phase), bitmap.width, bitmap.height)
+                        val sourceMetadata = when {
+                            !recipe.preserveMetadata -> null
+                            extension != "cr3" -> ExifInterface(raw)
+                            else -> {
+                                val preview = try {
+                                    NativeRawDecoder.cameraPreview(raw.absolutePath, cancellation)
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (previewError: Exception) {
+                                    throw IllegalStateException(
+                                        "Cannot read metadata from this Canon CR3. Turn off metadata preservation to convert it.",
+                                        previewError,
+                                    )
+                                }
+                                ExifInterface(ByteArrayInputStream(preview))
+                            }
+                        }
+                        PreparedJpeg(
+                            JpegEncoder.encode(bitmap, raw, jpeg, recipe, cancellation, sourceMetadata = sourceMetadata, phase = phase),
+                            bitmap.width,
+                            bitmap.height,
+                        )
                     } finally { bitmap.recycle() }
                 }
             } catch (error: UnsatisfiedLinkError) {
@@ -81,7 +106,7 @@ class RawConversionEngine(private val context: Context) {
             cancellation.check()
             phase("Saving JPEG")
             // Check again after development: never open an existing document for write.
-            if (existing()) return ConversionResult(input.label, skipped = true)
+            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
             val stagingName = ".raw-photo-converter-${UUID.randomUUID()}.pending.jpg"
             output = folder.createFile("image/jpeg", stagingName) ?: error("The output provider could not create a temporary JPEG.")
             val document = output
@@ -119,12 +144,22 @@ class RawConversionEngine(private val context: Context) {
             } ?: error("The saved JPEG could not be verified.")
             check(bytes == choice.bytes) { "The output provider saved an incomplete JPEG." }
             cancellation.check()
-            if (existing()) return ConversionResult(input.label, skipped = true)
+            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
             check(document.renameTo(name)) { "The output provider cannot finalize JPEG filenames. Choose another output folder." }
             check(document.name == name) { "The output provider changed the final filename. No JPEG was saved." }
             saved = true
             preferences.edit().remove("pendingOutput").commit()
-            return ConversionResult(input.label, document.uri, choice.quality.takeIf { it > 0 }, bytes, width, height, choice.targetMet, cameraLook = recipe.mode == ConversionMode.CAMERA_LOOK)
+            return ConversionResult(
+                input.label,
+                document.uri,
+                choice.quality.takeIf { it > 0 },
+                bytes,
+                width,
+                height,
+                choice.targetMet,
+                cameraLook = recipe.mode == ConversionMode.CAMERA_LOOK,
+                sourceUri = input.uri.toString(),
+            )
         } finally {
             if (!saved && ownsOutput && output?.uri != input.uri) {
                 output?.let { document ->

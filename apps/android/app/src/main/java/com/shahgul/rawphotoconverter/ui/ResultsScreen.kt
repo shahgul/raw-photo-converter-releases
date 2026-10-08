@@ -56,7 +56,7 @@ internal fun ResultsScreen(
     onConvertMore: () -> Unit,
     onOpenJpeg: (Uri) -> Unit,
     onShareJpeg: (Uri) -> Unit,
-    onRetryFailed: () -> Unit,
+    onRetryFailed: (String?) -> Unit,
     canRetry: Boolean,
     onViewProcessing: () -> Unit,
     themePreference: ThemePreference,
@@ -144,7 +144,7 @@ internal fun ResultsScreen(
                                 }
                                 if (failedCount > 0 && canRetry && !batch.running) {
                                     TextButton(
-                                        onClick = onRetryFailed,
+                                        onClick = { onRetryFailed(null) },
                                         contentPadding = PaddingValues(0.dp),
                                         modifier = Modifier.heightIn(min = 48.dp),
                                     ) {
@@ -253,7 +253,7 @@ private fun ResultRow(
     result: ConversionResult,
     onOpenJpeg: (Uri) -> Unit,
     onShareJpeg: (Uri) -> Unit,
-    onRetryFailed: () -> Unit,
+    onRetryFailed: (String?) -> Unit,
     canRetry: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -291,9 +291,9 @@ private fun ResultRow(
                         Text("Share")
                     }
                 }
-                if (result.error != null && canRetry) {
-                    TextButton(onClick = onRetryFailed, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                        Text("Retry")
+                if (result.error != null && result.sourceUri != null && canRetry) {
+                    TextButton(onClick = { onRetryFailed(result.sourceUri) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text("Retry file")
                     }
                 }
             }
