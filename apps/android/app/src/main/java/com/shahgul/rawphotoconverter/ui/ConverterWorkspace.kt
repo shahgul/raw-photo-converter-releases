@@ -62,6 +62,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -309,60 +311,61 @@ private fun SourceHero(
                         )
                     }
                     else -> {
-                        val selected = source!!
-                        val photoCount = when (selected) {
-                            is RawSourceSummary.Single -> 1
-                            is RawSourceSummary.Folder -> selected.rawCount
-                        }
-                        if (selected is RawSourceSummary.Single) SinglePhotoPreview(selected, compactWindow())
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Surface(
-                                    color = colors.primaryContainer,
-                                    contentColor = colors.onPrimaryContainer,
-                                    shape = shapes.medium,
-                                ) {
-                                    Text(
-                                        "$photoCount",
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontFamily = MeasurementFont,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        selected.label,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        when (selected) {
-                                            is RawSourceSummary.Single -> "1 RAW · ${formatSize(selected.sizeBytes)}"
-                                            is RawSourceSummary.Folder -> "${selected.rawCount} RAW · ${formatSize(selected.totalBytes)}"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.onSurfaceVariant,
-                                        fontFamily = MeasurementFont,
-                                    )
-                                    if (selected is RawSourceSummary.Single) {
+                        val selected = source
+                        if (selected != null) {
+                            val photoCount = when (selected) {
+                                is RawSourceSummary.Single -> 1
+                                is RawSourceSummary.Folder -> selected.rawCount
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                when (selected) {
+                                    is RawSourceSummary.Single -> {
+                                        SinglePhotoPreview(selected, compactWindow())
                                         selected.metadata.camera?.let {
                                             Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                                         }
                                     }
+                                    is RawSourceSummary.Folder -> {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Surface(
+                                                color = colors.primaryContainer,
+                                                contentColor = colors.onPrimaryContainer,
+                                                shape = shapes.medium,
+                                            ) {
+                                                Text(
+                                                    "$photoCount",
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    style = MaterialTheme.typography.titleLarge,
+                                                    fontFamily = MeasurementFont,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
+                                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text(
+                                                    selected.label,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                Text(
+                                                    "${selected.rawCount} RAW · ${formatSize(selected.totalBytes)}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                    fontFamily = MeasurementFont,
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            "This folder only — subfolders aren't included.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.onSurfaceVariant,
+                                        )
+                                    }
                                 }
-                            }
-                            if (selected is RawSourceSummary.Folder) {
-                                Text(
-                                    "This folder only — subfolders aren't included.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant,
-                                )
                             }
                         }
                     }
@@ -405,28 +408,20 @@ private fun SinglePhotoPreview(source: RawSourceSummary.Single, compactHeight: B
     val shapes = MaterialTheme.shapes
     val previewHeight = if (compactHeight) 170.dp else 260.dp
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when (val preview = source.preview) {
-            RawPreviewState.Loading -> {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(previewHeight)
-                        .clip(shapes.medium)
-                        .background(colors.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(previewHeight)
+                .clip(shapes.medium)
+                .background(colors.surfaceContainerHighest),
+        ) {
+            when (val preview = source.preview) {
+                RawPreviewState.Loading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp)
+                    }
                 }
-                Text("Loading camera preview…", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-            }
-            is RawPreviewState.Ready -> {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(previewHeight)
-                        .clip(shapes.medium)
-                        .background(colors.surfaceContainerHighest),
-                ) {
+                is RawPreviewState.Ready -> {
                     Image(
                         bitmap = preview.bitmap.asImageBitmap(),
                         contentDescription = "Embedded camera JPEG preview for ${source.label}",
@@ -434,31 +429,75 @@ private fun SinglePhotoPreview(source: RawSourceSummary.Single, compactHeight: B
                         contentScale = ContentScale.Fit,
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Embedded camera JPEG preview", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        "Develop RAW may render differently.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
+                is RawPreviewState.Unavailable -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            preview.message,
+                            modifier = Modifier.padding(24.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
                 }
             }
-            is RawPreviewState.Unavailable -> {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(shapes.medium)
-                        .background(colors.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        preview.message,
-                        modifier = Modifier.padding(24.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
+
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(82.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
+                        ),
+                    ),
+            )
+
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = 48.dp, end = 48.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    source.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "1 RAW · ${formatSize(source.sizeBytes)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.84f),
+                    fontFamily = MeasurementFont,
+                    maxLines = 1,
+                )
+            }
+
+            Text(
+                "01",
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 14.dp, bottom = 15.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.72f),
+                fontFamily = MeasurementFont,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        if (source.preview is RawPreviewState.Ready) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Embedded camera JPEG preview", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Develop RAW may render differently.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
             }
         }
     }

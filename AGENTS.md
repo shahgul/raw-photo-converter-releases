@@ -21,8 +21,8 @@ Rules for every coding agent:
 ## Current snapshot
 
 - Product: Raw Photo Converter for Android
-- Public version: 0.0.9-alpha
-- Private source commit: 685032b03ca37fc746d549214bc2b39e7158e532
-- Android implementation commit: b1c1194f69419514f0edfff973c16bd0a076202f
+- Public version: 0.0.10-alpha
+- Private source commit: a55410c536bb57a750b93607a882059b77187880
+- Android implementation and signed APK commit: 57b7a6138a3b4598a9f2cf42e42f3c82b85aedc5
 - Project-owned code license: MPL-2.0; keep third-party notices separate
 - Publication model: explicit/manual only
