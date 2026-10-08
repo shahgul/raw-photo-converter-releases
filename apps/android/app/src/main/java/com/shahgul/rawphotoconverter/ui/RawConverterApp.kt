@@ -26,12 +26,14 @@ import com.shahgul.rawphotoconverter.conversion.ConversionStore
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
 import com.shahgul.rawphotoconverter.conversion.RetryPolicy
 import com.shahgul.rawphotoconverter.data.RawSourceRepository
+import com.shahgul.rawphotoconverter.data.RawPreviewState
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
 import com.shahgul.rawphotoconverter.ui.theme.RawPhotoConverterTheme
 import com.shahgul.rawphotoconverter.ui.theme.rememberThemePreference
 import com.shahgul.rawphotoconverter.ui.theme.resolvesDark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -42,6 +44,8 @@ fun RawConverterApp(processingRequest: Int = 0) {
         val repository = remember(context) { RawSourceRepository(context) }
         val scope = rememberCoroutineScope()
         var source by remember { mutableStateOf<RawSourceSummary?>(null) }
+        var previewJob by remember { mutableStateOf<Job?>(null) }
+        var sourceRequestId by remember { mutableStateOf(0) }
         var loading by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf<String?>(null) }
         var outputUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -103,37 +107,59 @@ fun RawConverterApp(processingRequest: Int = 0) {
         }
 
         fun loadSingle(uri: Uri) {
+            val requestId = ++sourceRequestId
+            previewJob?.cancel()
+            previewJob = null
             repository.persistReadPermission(uri)
             loading = true
             source = null
             error = null
             scope.launch {
                 try {
-                    source = repository.inspectRaw(uri)
+                    val inspected = repository.inspectRaw(uri)
+                    if (requestId != sourceRequestId) return@launch
+                    source = inspected.copy(preview = RawPreviewState.Loading)
+                    previewJob = scope.launch {
+                        val preview = try {
+                            repository.loadPreview(uri, inspected.sizeBytes)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            RawPreviewState.Unavailable("The camera preview couldn't be read. Develop RAW is still available.")
+                        }
+                        val current = source as? RawSourceSummary.Single
+                        if (requestId == sourceRequestId && current != null && current.uri == uri) {
+                            source = current.copy(preview = preview)
+                        }
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    error = failure.message ?: "Unable to inspect RAW."
+                    if (requestId == sourceRequestId) error = failure.message ?: "Unable to inspect RAW."
                 } finally {
-                    loading = false
+                    if (requestId == sourceRequestId) loading = false
                 }
             }
         }
 
         fun loadFolder(uri: Uri) {
+            val requestId = ++sourceRequestId
+            previewJob?.cancel()
+            previewJob = null
             repository.persistReadPermission(uri)
             loading = true
             source = null
             error = null
             scope.launch {
                 try {
-                    source = repository.inspectFolder(uri)
+                    val inspected = repository.inspectFolder(uri)
+                    if (requestId == sourceRequestId) source = inspected
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    error = failure.message ?: "Unable to inspect folder."
+                    if (requestId == sourceRequestId) error = failure.message ?: "Unable to inspect folder."
                 } finally {
-                    loading = false
+                    if (requestId == sourceRequestId) loading = false
                 }
             }
         }
@@ -184,6 +210,16 @@ fun RawConverterApp(processingRequest: Int = 0) {
                     mode,
                     resolution,
                 )
+                previewJob?.cancel()
+                previewJob = null
+                val single = source as? RawSourceSummary.Single
+                if (single != null && single.preview == RawPreviewState.Loading) {
+                    source = single.copy(
+                        preview = RawPreviewState.Unavailable(
+                            "Preview loading stopped while conversion runs.",
+                        ),
+                    )
+                }
                 go(AppScreen.Processing)
                 error = null
             } catch (failure: Exception) {

@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,12 +23,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -58,6 +61,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
@@ -74,6 +80,7 @@ import com.shahgul.rawphotoconverter.conversion.ConversionMode
 import com.shahgul.rawphotoconverter.conversion.ConversionRecipe
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
+import com.shahgul.rawphotoconverter.data.RawPreviewState
 import com.shahgul.rawphotoconverter.ui.theme.MeasurementFont
 import com.shahgul.rawphotoconverter.ui.theme.ThemePreference
 
@@ -307,6 +314,7 @@ private fun SourceHero(
                             is RawSourceSummary.Single -> 1
                             is RawSourceSummary.Folder -> selected.rawCount
                         }
+                        if (selected is RawSourceSummary.Single) SinglePhotoPreview(selected, compactWindow())
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -387,6 +395,71 @@ private fun SourceHero(
                 }
             }
             if (source is RawSourceSummary.Single) PhotoDetails(source)
+        }
+    }
+}
+
+@Composable
+private fun SinglePhotoPreview(source: RawSourceSummary.Single, compactHeight: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val shapes = MaterialTheme.shapes
+    val previewHeight = if (compactHeight) 170.dp else 260.dp
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (val preview = source.preview) {
+            RawPreviewState.Loading -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(previewHeight)
+                        .clip(shapes.medium)
+                        .background(colors.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp)
+                }
+                Text("Loading camera preview…", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            }
+            is RawPreviewState.Ready -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(previewHeight)
+                        .clip(shapes.medium)
+                        .background(colors.surfaceContainerHighest),
+                ) {
+                    Image(
+                        bitmap = preview.bitmap.asImageBitmap(),
+                        contentDescription = "Embedded camera JPEG preview for ${source.label}",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Embedded camera JPEG preview", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "Develop RAW may render differently.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+            is RawPreviewState.Unavailable -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(shapes.medium)
+                        .background(colors.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        preview.message,
+                        modifier = Modifier.padding(24.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

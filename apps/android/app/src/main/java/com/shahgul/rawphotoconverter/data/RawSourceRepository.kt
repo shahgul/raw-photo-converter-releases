@@ -2,16 +2,28 @@ package com.shahgul.rawphotoconverter.data
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ColorSpace
+import android.graphics.Matrix
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import com.shahgul.rawphotoconverter.conversion.ConversionCancellation
 import com.shahgul.rawphotoconverter.conversion.ConversionPolicy
+import com.shahgul.rawphotoconverter.conversion.NativeRawDecoder
 import com.shahgul.rawphotoconverter.conversion.RawInput
 import android.util.Log
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.util.UUID
 
 sealed interface RawSourceSummary {
     val label: String
@@ -21,6 +33,7 @@ sealed interface RawSourceSummary {
         val uri: Uri,
         val sizeBytes: Long?,
         val metadata: RawMetadata,
+        val preview: RawPreviewState = RawPreviewState.Loading,
     ) : RawSourceSummary
 
     data class Folder(
@@ -29,6 +42,12 @@ sealed interface RawSourceSummary {
         val rawCount: Int,
         val totalBytes: Long,
     ) : RawSourceSummary
+}
+
+sealed interface RawPreviewState {
+    data object Loading : RawPreviewState
+    data class Ready(val bitmap: Bitmap) : RawPreviewState
+    data class Unavailable(val message: String) : RawPreviewState
 }
 
 data class RawMetadata(
@@ -87,6 +106,98 @@ class RawSourceRepository(private val context: Context) {
             sizeBytes = size,
             metadata = metadata,
         )
+    }
+
+    suspend fun loadPreview(uri: Uri, sizeBytes: Long?): RawPreviewState = withContext(Dispatchers.IO) {
+        if (sizeBytes != null && sizeBytes > 512L * 1024 * 1024) {
+            return@withContext RawPreviewState.Unavailable(
+                "This RAW exceeds the app's 512 MiB input limit, so a preview isn't available.",
+            )
+        }
+
+        val coroutine = currentCoroutineContext()
+        val cancellation = ConversionCancellation()
+        val cancellationHandle = coroutine.job.invokeOnCompletion { cause ->
+            if (cause != null) cancellation.cancelled = true
+        }
+        var stagedRaw: File? = null
+        try {
+            coroutine.ensureActive()
+            val raw = File.createTempFile("raw-preview-${UUID.randomUUID()}-", ".cr3", context.cacheDir)
+            stagedRaw = raw
+            resolver.openInputStream(uri)?.use { input ->
+                raw.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var totalBytes = 0L
+                    while (true) {
+                        coroutine.ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        totalBytes += count
+                        check(totalBytes <= 512L * 1024 * 1024) {
+                            "This RAW exceeds the app's 512 MiB input limit, so a preview isn't available."
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            } ?: error("The selected file provider did not open the RAW for preview.")
+            check(raw.length() > 0) { "The selected RAW is empty." }
+            coroutine.ensureActive()
+            val previewBytes = NativeRawDecoder.cameraPreview(raw.absolutePath, cancellation)
+            coroutine.ensureActive()
+            RawPreviewState.Ready(decodePreview(previewBytes))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unavailable: UnsatisfiedLinkError) {
+            RawPreviewState.Unavailable("The camera preview couldn't be loaded. Develop RAW is still available.")
+        } catch (failure: Exception) {
+            Log.w("RawSource", "Embedded preview load failed (${failure.javaClass.simpleName}): ${failure.message}", failure)
+            val previewMissing = failure.message.orEmpty().contains("preview", ignoreCase = true) ||
+                failure.message.orEmpty().contains("thumbnail", ignoreCase = true)
+            RawPreviewState.Unavailable(
+                when {
+                    failure.message.orEmpty().contains("512 MiB", ignoreCase = true) -> failure.message!!
+                    previewMissing ->
+                    "This RAW has no supported embedded JPEG. Camera look needs one; Develop RAW is still available."
+                    else -> "The camera preview couldn't be read. Develop RAW is still available."
+                },
+            )
+        } finally {
+            cancellationHandle.dispose()
+            stagedRaw?.delete()
+        }
+    }
+
+    private fun decodePreview(bytes: ByteArray): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        check(bounds.outWidth > 0 && bounds.outHeight > 0 && bounds.outWidth.toLong() * bounds.outHeight <= 50_000_000) {
+            "The embedded camera preview is invalid or too large."
+        }
+
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > 1200) sampleSize *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+        }
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            ?: error("The embedded camera preview couldn't be decoded.")
+        return try {
+            val exif = ExifInterface(ByteArrayInputStream(bytes))
+            val matrix = Matrix().apply {
+                if (exif.isFlipped()) postScale(-1f, 1f)
+                val rotation = exif.getRotationDegrees()
+                if (rotation != 0) postRotate(rotation.toFloat())
+            }
+            if (matrix.isIdentity()) decoded
+            else Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
+                if (it !== decoded) decoded.recycle()
+            }
+        } catch (failure: Exception) {
+            decoded.recycle()
+            throw failure
+        }
     }
 
     suspend fun inspectFolder(uri: Uri): RawSourceSummary.Folder = withContext(Dispatchers.IO) {
