@@ -2,6 +2,8 @@
 
 Native Android companion built with Kotlin, Jetpack Compose, Storage Access Framework, and a LibRaw/NDK engine.
 
+See the [Android screenshot gallery](../../README.md#android-app-screenshots) for real app screens. Any Android UI/workflow changes require screenshot review and updates before a corresponding public release; see [AGENTS.md](../../AGENTS.md#android-screenshot-maintenance).
+
 ## Android 0.0.10-alpha
 
 The signed alpha selects one RAW photo at a time or batches supported files directly inside a selected folder. Single-photo previews use the embedded camera JPEG. The filename and RAW size are centered at the bottom of the preview; a small, subdued index sits at the lower-left. Changing the selected photo during its preview transition is supported.
