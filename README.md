@@ -42,6 +42,8 @@ The 0.0.10-alpha release workflow passed 13 unit tests, release lint, signed ass
 
 Download the stable-key signed APK and checksum bundle from the [Android 0.0.10-alpha prerelease](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.10-alpha). APK binaries are distributed through Releases, not committed to the source tree.
 
+Screenshot maintenance: UI/workflow changes require refreshed real screenshots and gallery captions before the corresponding public release. See [AGENTS.md](AGENTS.md#android-screenshot-maintenance).
+
 ## Build
 
 Open `apps/android` in Android Studio and sync. Install Android SDK Platform 37, NDK 30.0.16248370, and CMake 3.22.1. From `apps/android`, run the Gradle wrapper for unit tests, lint, or debug APK assembly. The build downloads checksum-pinned LibRaw 0.22.2 source; conversion itself needs no network.
