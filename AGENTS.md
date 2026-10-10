@@ -18,6 +18,14 @@ Rules for every coding agent:
 - Before publishing a newer snapshot, audit secrets, internal/private references, third-party licensing/attribution, and release notes.
 - If asked to continue, fix, implement, or start the next task while operating in this repository, stop and move the work to the development repository unless Shahgul explicitly says the public snapshot itself must be changed.
 
+## Android screenshot maintenance
+
+- The canonical Android screenshot gallery lives in `docs/screenshots/`, with its ordered presentation in the root `README.md`. The Android README links to that gallery.
+- When an Android feature, screen, navigation path, visual design, action, or result changes, review whether existing screenshots are now misleading or whether a new screen/state needs coverage. Treat this as part of the Android change's documentation and release checklist, not optional polish.
+- If a screenshot is affected, capture an authentic image from the current Android app, replace outdated images or add appropriately named ones, update gallery order/captions/alt text, and verify all referenced paths render. Never use fabricated screenshots or claim screenshots show behavior not present in the build.
+- If updated screenshots cannot be captured during development, explicitly record which screenshots are stale or missing in the change summary/release checklist and request fresh captures before public publication; do not silently keep inaccurate images.
+- Public screenshots and README updates require an explicit user-requested publication or documentation sync. The public repository is not automatically mirrored from private development. During an authorized public update, ensure the screenshots accurately represent the public APK/source version and keep both READMEs and screenshot paths consistent.
+
 ## Current snapshot
 
 - Product: Raw Photo Converter for Android
