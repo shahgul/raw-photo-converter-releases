@@ -10,6 +10,16 @@ This repository is a curated public source snapshot. Ongoing development stays i
 
 The reviewed source snapshot is pinned to private commit `a55410c536bb57a750b93607a882059b77187880`. The Android implementation and signed APK are from private commit `57b7a6138a3b4598a9f2cf42e42f3c82b85aedc5`.
 
+## Android app screenshots
+
+Actual Android alpha screenshots, shown in workflow order. These are documentation images, not a new app release.
+
+| Add photos | RAW preview and metadata | Batch setup |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/Screenshot_20261010_192056_Raw%20Photo%20Converter.jpg" width="240" alt="Choose Sony ARW or Canon CR2/CR3 files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw%20Photo%20Converter.jpg" width="240" alt="Embedded JPEG preview and camera metadata" /> | <img src="docs/screenshots/Screenshot_20261010_192037_Raw%20Photo%20Converter.jpg" width="240" alt="Batch selection and conversion recipe" /> |
+| **Processing** | **Results** | **App identity** |
+| <img src="docs/screenshots/Screenshot_20261010_192007_Raw%20Photo%20Converter.jpg" width="240" alt="Live processing metrics and converter logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw%20Photo%20Converter.jpg" width="240" alt="Saved JPEG and conversion results" /> | <img src="docs/screenshots/Screenshot_20261010_191925_Raw%20Photo%20Converter.jpg" width="240" alt="Raw Photo Converter Android app identity" /> |
+
 ## What it does
 
 - develops Sony ARW and Canon CR2/CR3 files locally on Android
