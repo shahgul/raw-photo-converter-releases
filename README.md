@@ -14,11 +14,11 @@ The reviewed source snapshot is pinned to private commit `a55410c536bb57a750b936
 
 Actual Android alpha screenshots, shown in workflow order. These are documentation images, not a new app release.
 
-| Add photos | RAW preview and metadata | Batch setup |
+| 1. App identity | 2. Add RAW photos | 3. RAW preview |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="240" alt="Choose Sony ARW or Canon CR2/CR3 files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="240" alt="Embedded JPEG preview and camera metadata" /> | <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="240" alt="Batch selection and conversion recipe" /> |
-| **Processing** | **Results** | **App identity** |
-| <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="240" alt="Live processing metrics and converter logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="240" alt="Saved JPEG and conversion results" /> | <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="240" alt="Raw Photo Converter Android app identity" /> |
+| <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="240" alt="App launcher and identity" /> | <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="240" alt="Choose RAW files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="240" alt="Photo preview and camera metadata" /> |
+| **4. Conversion settings** | **5. Processing** | **6. Results** |
+| <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="240" alt="Conversion recipe and options" /> | <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="240" alt="Conversion progress and logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="240" alt="Completed JPEG results" /> |
 
 ## What it does
 
