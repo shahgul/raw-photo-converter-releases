@@ -16,9 +16,9 @@ Actual Android alpha screenshots, shown in workflow order. These are documentati
 
 | Add photos | RAW preview and metadata | Batch setup |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/Screenshot_20261010_192056_Raw%20Photo%20Converter.jpg" width="240" alt="Choose Sony ARW or Canon CR2/CR3 files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw%20Photo%20Converter.jpg" width="240" alt="Embedded JPEG preview and camera metadata" /> | <img src="docs/screenshots/Screenshot_20261010_192037_Raw%20Photo%20Converter.jpg" width="240" alt="Batch selection and conversion recipe" /> |
+| <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="240" alt="Choose Sony ARW or Canon CR2/CR3 files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="240" alt="Embedded JPEG preview and camera metadata" /> | <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="240" alt="Batch selection and conversion recipe" /> |
 | **Processing** | **Results** | **App identity** |
-| <img src="docs/screenshots/Screenshot_20261010_192007_Raw%20Photo%20Converter.jpg" width="240" alt="Live processing metrics and converter logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw%20Photo%20Converter.jpg" width="240" alt="Saved JPEG and conversion results" /> | <img src="docs/screenshots/Screenshot_20261010_191925_Raw%20Photo%20Converter.jpg" width="240" alt="Raw Photo Converter Android app identity" /> |
+| <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="240" alt="Live processing metrics and converter logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="240" alt="Saved JPEG and conversion results" /> | <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="240" alt="Raw Photo Converter Android app identity" /> |
 
 ## What it does
 
