@@ -14,11 +14,11 @@ The reviewed source snapshot is pinned to private commit `a55410c536bb57a750b936
 
 Actual Android alpha screenshots, shown in workflow order. These are documentation images, not a new app release.
 
-| 01 · App identity | 02 · Add photos | 03 · RAW preview |
+| 01 · Add photos | 02 · Single-photo preview | 03 · Photo details |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="230" alt="App identity" /> | <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="230" alt="Add RAW photos" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="230" alt="RAW preview" /> |
-| **04 · Conversion settings** | **05 · Processing** | **06 · Results** |
-| <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="230" alt="Conversion settings" /> | <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="230" alt="Processing" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="230" alt="Results" /> |
+| <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="230" alt="Add photos" /> | <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="230" alt="Single-photo preview" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="230" alt="Photo details" /> |
+| **04 · Batch settings** | **05 · Processing** | **06 · Results** |
+| <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="230" alt="Batch settings" /> | <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="230" alt="Processing" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="230" alt="Results" /> |
 
 
 ## What it does
