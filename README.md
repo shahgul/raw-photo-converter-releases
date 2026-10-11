@@ -14,11 +14,12 @@ The reviewed source snapshot is pinned to private commit `a55410c536bb57a750b936
 
 Actual Android alpha screenshots, shown in workflow order. These are documentation images, not a new app release.
 
-| 1. App identity | 2. Add RAW photos | 3. RAW preview |
+| 01 · App identity | 02 · Add photos | 03 · RAW preview |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="240" alt="App launcher and identity" /> | <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="240" alt="Choose RAW files" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="240" alt="Photo preview and camera metadata" /> |
-| **4. Conversion settings** | **5. Processing** | **6. Results** |
-| <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="240" alt="Conversion recipe and options" /> | <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="240" alt="Conversion progress and logs" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="240" alt="Completed JPEG results" /> |
+| <img src="docs/screenshots/Screenshot_20261010_191925_Raw Photo Converter.jpg" width="230" alt="App identity" /> | <img src="docs/screenshots/Screenshot_20261010_192056_Raw Photo Converter.jpg" width="230" alt="Add RAW photos" /> | <img src="docs/screenshots/Screenshot_20261010_192051_Raw Photo Converter.jpg" width="230" alt="RAW preview" /> |
+| **04 · Conversion settings** | **05 · Processing** | **06 · Results** |
+| <img src="docs/screenshots/Screenshot_20261010_192037_Raw Photo Converter.jpg" width="230" alt="Conversion settings" /> | <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="230" alt="Processing" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="230" alt="Results" /> |
+
 
 ## What it does
 
