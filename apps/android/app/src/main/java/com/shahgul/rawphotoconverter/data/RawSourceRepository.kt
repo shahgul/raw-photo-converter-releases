@@ -42,7 +42,14 @@ sealed interface RawSourceSummary {
         val rawCount: Int,
         val totalBytes: Long,
     ) : RawSourceSummary
+
+    data class Photos(val photos: List<SelectedRaw>) : RawSourceSummary {
+        override val label: String get() = "${photos.size} selected photos"
+    }
 }
+
+data class SelectedRaw(val uri: Uri, val label: String, val sizeBytes: Long?)
+data class SelectionInspection(val photos: List<SelectedRaw>, val failures: List<String>)
 
 sealed interface RawPreviewState {
     data object Loading : RawPreviewState
@@ -63,6 +70,27 @@ data class RawMetadata(
 
 class RawSourceRepository(private val context: Context) {
     private val resolver = context.contentResolver
+
+    suspend fun inspectSelection(uris: List<Uri>): SelectionInspection = withContext(Dispatchers.IO) {
+        val photos = mutableListOf<SelectedRaw>()
+        val failures = mutableListOf<String>()
+        for (uri in uris.distinct()) {
+            currentCoroutineContext().ensureActive()
+            try {
+                val (name, size) = queryNameAndSize(uri)
+                val label = name ?: error("The provider did not supply a filename.")
+                ConversionPolicy.jpegName(label)
+                resolver.openFileDescriptor(uri, "r")?.use { } ?: error("$label cannot be read. Select it again.")
+                photos += SelectedRaw(uri, label, size)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Log.w("RawSource", "Selected RAW inspection failed", failure)
+                failures += failure.message ?: "A selected photo could not be read."
+            }
+        }
+        SelectionInspection(photos, failures)
+    }
 
     fun persistReadPermission(uri: Uri) {
         try {

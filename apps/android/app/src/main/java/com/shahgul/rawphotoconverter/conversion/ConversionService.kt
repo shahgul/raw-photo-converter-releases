@@ -69,6 +69,22 @@ object ConversionStore {
     val state = mutable.asStateFlow()
     private var initialized = false
     private var pendingRetry: RetryRequest? = null
+    private var pendingPhotos: List<RawInput>? = null
+
+    @Synchronized internal fun createPhotoRequest(inputs: List<RawInput>): List<RawInput> {
+        check(!mutable.value.running && pendingPhotos == null && pendingRetry == null) { "A conversion is already starting or running." }
+        val selected = inputs.distinctBy { it.uri }
+        require(selected.isNotEmpty()) { "Select at least one RAW photo." }
+        selected.forEach { ConversionPolicy.jpegName(it.label) }
+        pendingPhotos = selected
+        return selected
+    }
+
+    @Synchronized internal fun takePhotoRequest(): List<RawInput>? = pendingPhotos.also { pendingPhotos = null }
+
+    @Synchronized internal fun discardPhotoRequest(request: List<RawInput>) {
+        if (pendingPhotos === request) pendingPhotos = null
+    }
 
     @Synchronized fun initialize(context: Context) {
         if (initialized) return
@@ -103,7 +119,7 @@ object ConversionStore {
 
     @Synchronized internal fun createRetryRequest(sourceUri: String? = null): RetryRequest? {
         val previous = mutable.value
-        if (previous.running || pendingRetry != null) return null
+        if (previous.running || pendingRetry != null || pendingPhotos != null) return null
         val settings = previous.settings ?: return null
         if (settings.outputUri.isNullOrBlank()) return null
         val failed = RetryPolicy.failed(previous.results, sourceUri)
@@ -150,6 +166,7 @@ class ConversionService : Service() {
             return START_NOT_STICKY
         }
         if (active || intent == null) {
+            if (intent?.action == SELECTED_PHOTOS) ConversionStore.takePhotoRequest()
             if (intent?.action == RETRY_FAILED) {
                 ConversionStore.takeRetryRequest()?.let { request ->
                     ConversionStore.publish(
@@ -161,6 +178,12 @@ class ConversionService : Service() {
             return START_NOT_STICKY
         }
         val retryRequest = if (intent.action == RETRY_FAILED) ConversionStore.takeRetryRequest() else null
+        val photoRequest = if (intent.action == SELECTED_PHOTOS) ConversionStore.takePhotoRequest() else null
+        if (intent.action == SELECTED_PHOTOS && photoRequest == null) {
+            Log.w("RawConversion", "Selected photo request was missing or already consumed")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         if (intent.action == RETRY_FAILED && retryRequest == null) {
             Log.w("RawConversion", "Retry request was missing or already consumed")
             stopSelf(startId)
@@ -243,6 +266,8 @@ class ConversionService : Service() {
                 val repository = RawSourceRepository(applicationContext)
                 val inputs = if (retryRequest != null) {
                     retryRequest.inputs
+                } else if (photoRequest != null) {
+                    photoRequest
                 } else {
                     val sourceUri = Uri.parse(requireNotNull(intent.getStringExtra(SOURCE)))
                     if (intent.getBooleanExtra(FOLDER, false)) {
@@ -381,6 +406,7 @@ class ConversionService : Service() {
         private const val NOTIFICATION = 101
         private const val CANCEL = "com.shahgul.rawphotoconverter.CANCEL"
         private const val RETRY_FAILED = "com.shahgul.rawphotoconverter.RETRY_FAILED"
+        private const val SELECTED_PHOTOS = "com.shahgul.rawphotoconverter.SELECTED_PHOTOS"
         private const val SOURCE = "source"
         private const val OUTPUT = "output"
         private const val LABEL = "label"
@@ -394,6 +420,22 @@ class ConversionService : Service() {
                 .putExtra(SOURCE, source.toString()).putExtra(LABEL, label).putExtra(FOLDER, isFolder)
                 .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
                 .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name))
+        }
+
+        fun startPhotos(context: Context, inputs: List<RawInput>, output: Uri, metadata: Boolean,
+            mode: ConversionMode = ConversionMode.DEVELOP_RAW, resolution: OutputResolution = OutputResolution.STANDARD) {
+            // Keep the queue in the process, like retry requests. Large selections must
+            // not put thousands of URIs into Binder extras. Process death never restarts a batch.
+            val request = ConversionStore.createPhotoRequest(inputs)
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, ConversionService::class.java)
+                    .setAction(SELECTED_PHOTOS).putExtra(LABEL, "${request.size} selected photos")
+                    .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
+                    .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name))
+            } catch (failure: Exception) {
+                ConversionStore.discardPhotoRequest(request)
+                throw failure
+            }
         }
 
         fun cancel(context: Context) {

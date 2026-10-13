@@ -25,9 +25,11 @@ import com.shahgul.rawphotoconverter.conversion.ConversionService
 import com.shahgul.rawphotoconverter.conversion.ConversionStore
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
 import com.shahgul.rawphotoconverter.conversion.RetryPolicy
+import com.shahgul.rawphotoconverter.conversion.RawInput
 import com.shahgul.rawphotoconverter.data.RawSourceRepository
 import com.shahgul.rawphotoconverter.data.RawPreviewState
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
+import com.shahgul.rawphotoconverter.data.SelectedRaw
 import com.shahgul.rawphotoconverter.ui.theme.RawPhotoConverterTheme
 import com.shahgul.rawphotoconverter.ui.theme.rememberThemePreference
 import com.shahgul.rawphotoconverter.ui.theme.resolvesDark
@@ -44,6 +46,7 @@ fun RawConverterApp(processingRequest: Int = 0) {
         val repository = remember(context) { RawSourceRepository(context) }
         val scope = rememberCoroutineScope()
         var source by remember { mutableStateOf<RawSourceSummary?>(null) }
+        var selectedPhotoUris by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
         var previewJob by remember { mutableStateOf<Job?>(null) }
         var sourceRequestId by remember { mutableStateOf(0) }
         var loading by remember { mutableStateOf(false) }
@@ -118,6 +121,7 @@ fun RawConverterApp(processingRequest: Int = 0) {
                 try {
                     val inspected = repository.inspectRaw(uri)
                     if (requestId != sourceRequestId) return@launch
+                    selectedPhotoUris = listOf(uri.toString())
                     source = inspected.copy(preview = RawPreviewState.Loading)
                     previewJob = scope.launch {
                         val preview = try {
@@ -153,7 +157,10 @@ fun RawConverterApp(processingRequest: Int = 0) {
             scope.launch {
                 try {
                     val inspected = repository.inspectFolder(uri)
-                    if (requestId == sourceRequestId) source = inspected
+                    if (requestId == sourceRequestId) {
+                        source = inspected
+                        selectedPhotoUris = emptyList()
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -164,8 +171,81 @@ fun RawConverterApp(processingRequest: Int = 0) {
             }
         }
 
-        val rawPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let(::loadSingle)
+        fun loadPhotos(uris: List<Uri>) {
+            if (uris.isEmpty() || batch.running) return
+            val previous = when (val selected = source) {
+                is RawSourceSummary.Single -> listOf(SelectedRaw(selected.uri, selected.label, selected.sizeBytes))
+                is RawSourceSummary.Photos -> selected.photos
+                else -> emptyList()
+            }
+            val additions = uris.distinct().filter { uri -> previous.none { it.uri == uri } }
+            if (additions.isEmpty()) return
+            if (previous.isEmpty() && additions.size == 1) {
+                loadSingle(additions.single())
+                return
+            }
+            val requestId = ++sourceRequestId
+            previewJob?.cancel()
+            previewJob = null
+            additions.forEach(repository::persistReadPermission)
+            loading = true
+            error = null
+            scope.launch {
+                try {
+                    val inspected = repository.inspectSelection(additions)
+                    if (requestId != sourceRequestId) return@launch
+                    val photos = (previous + inspected.photos).distinctBy { it.uri }
+                    if (photos.isNotEmpty()) {
+                        selectedPhotoUris = photos.map { it.uri.toString() }
+                        if (photos.size == 1) loadSingle(photos.single().uri)
+                        else source = RawSourceSummary.Photos(photos)
+                    }
+                    if (inspected.failures.isNotEmpty()) {
+                        error = "${inspected.failures.size} selection(s) weren't added. " + inspected.failures.distinct().take(3).joinToString(" ")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    if (requestId == sourceRequestId) error = failure.message ?: "Unable to read selected photos."
+                } finally {
+                    if (requestId == sourceRequestId) loading = false
+                }
+            }
+        }
+
+        fun removePhoto(uri: Uri) {
+            if (loading || batch.running) return
+            when (val selected = source) {
+                is RawSourceSummary.Single -> {
+                    if (selected.uri == uri) {
+                        ++sourceRequestId
+                        previewJob?.cancel()
+                        previewJob = null
+                        source = null
+                        selectedPhotoUris = emptyList()
+                    }
+                }
+                is RawSourceSummary.Photos -> {
+                    val remaining = selected.photos.filterNot { it.uri == uri }
+                    selectedPhotoUris = remaining.map { it.uri.toString() }
+                    when (remaining.size) {
+                        0 -> source = null
+                        1 -> loadSingle(remaining.single().uri)
+                        else -> source = RawSourceSummary.Photos(remaining)
+                    }
+                }
+                else -> Unit
+            }
+            error = null
+        }
+
+        val rawPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            loadPhotos(uris)
+        }
+        LaunchedEffect(batch.running) {
+            if (!batch.running && source == null && selectedPhotoUris.isNotEmpty()) {
+                loadPhotos(selectedPhotoUris.map(Uri::parse))
+            }
         }
         val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             uri?.let(::loadFolder)
@@ -196,20 +276,29 @@ fun RawConverterApp(processingRequest: Int = 0) {
             val selected = source ?: return
             val output = outputUri ?: return
             try {
-                val input = when (selected) {
-                    is RawSourceSummary.Single -> selected.uri
-                    is RawSourceSummary.Folder -> selected.uri
+                if (selected is RawSourceSummary.Photos) {
+                    ConversionService.startPhotos(
+                        context,
+                        selected.photos.map { RawInput(it.uri, it.label) },
+                        Uri.parse(output), preserveMetadata, mode, resolution,
+                    )
+                } else {
+                    val input = when (selected) {
+                        is RawSourceSummary.Single -> selected.uri
+                        is RawSourceSummary.Folder -> selected.uri
+                        is RawSourceSummary.Photos -> error("Use the selected-photo batch path.")
+                    }
+                    ConversionService.start(
+                        context,
+                        input,
+                        selected.label,
+                        selected is RawSourceSummary.Folder,
+                        Uri.parse(output),
+                        preserveMetadata,
+                        mode,
+                        resolution,
+                    )
                 }
-                ConversionService.start(
-                    context,
-                    input,
-                    selected.label,
-                    selected is RawSourceSummary.Folder,
-                    Uri.parse(output),
-                    preserveMetadata,
-                    mode,
-                    resolution,
-                )
                 previewJob?.cancel()
                 previewJob = null
                 val single = source as? RawSourceSummary.Single
@@ -304,6 +393,7 @@ fun RawConverterApp(processingRequest: Int = 0) {
             onConvert = { requestConvert() },
             themePreference = themePreference,
             onThemeCycle = { setThemePreference(themePreference.next()) },
+            onRemovePhoto = ::removePhoto,
         )
     }
 }

@@ -14,6 +14,8 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.CancellationException
 import com.shahgul.rawphotoconverter.MainActivity
+import com.shahgul.rawphotoconverter.data.RawSourceRepository
+import kotlinx.coroutines.runBlocking
 
 class SafConversionTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -22,6 +24,49 @@ class SafConversionTest {
     private val output get() = requireNotNull(DocumentFile.fromTreeUri(context, DocumentsContract.buildTreeDocumentUri(authority, "output")))
     private val engine get() = RawConversionEngine(context)
     private val input get() = RawInput(DocumentsContract.buildDocumentUri(authority, "source/sample.ARW"), "sample.ARW")
+
+    @Test fun pendingSelectionRejectsDuplicateStartsAndCanBeDiscardedAfterStartupFailure() {
+        assertThrows(IllegalArgumentException::class.java) { ConversionStore.createPhotoRequest(emptyList()) }
+        val request = ConversionStore.createPhotoRequest(listOf(input, input))
+        try {
+            assertEquals(1, request.size)
+            assertThrows(IllegalStateException::class.java) { ConversionStore.createPhotoRequest(listOf(input)) }
+            assertNull(ConversionStore.createRetryRequest())
+        } finally { ConversionStore.discardPhotoRequest(request) }
+        val next = ConversionStore.createPhotoRequest(listOf(input))
+        ConversionStore.discardPhotoRequest(next)
+    }
+
+    @Test fun selectionDeduplicatesUrisAndReportsUnsupportedAndMissingFiles() = runBlocking {
+        File(root, "source/notes.txt").writeText("not a RAW")
+        val unsupported = DocumentsContract.buildDocumentUri(authority, "source/notes.txt")
+        val missing = DocumentsContract.buildDocumentUri(authority, "source/missing.ARW")
+        val result = RawSourceRepository(context).inspectSelection(listOf(input.uri, unsupported, input.uri, missing))
+        assertEquals(listOf(input.uri), result.photos.map { it.uri })
+        assertEquals("sample.ARW", result.photos.single().label)
+        assertEquals(2, result.failures.size)
+    }
+
+    @Test fun selectedPhotoBatchConvertsOnlySelectedFilesAndRetainsFailuresForRetry() {
+        File(root, "source/sample.ARW").copyTo(File(root, "source/unselected.ARW"))
+        File(root, "source/broken.CR3").writeText("invalid RAW")
+        val broken = RawInput(DocumentsContract.buildDocumentUri(authority, "source/broken.CR3"), "broken.CR3")
+        val previousStart = ConversionStore.state.value.startedAtMs
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            activity.onActivity { ConversionService.startPhotos(it, listOf(input, broken, input), output.uri, true) }
+            await("Selected batch did not finish") {
+                val state = ConversionStore.state.value
+                state.startedAtMs != previousStart && !state.running && state.sourceLabel == "2 selected photos" && state.results.size == 2
+            }
+            val state = ConversionStore.state.value
+            assertEquals(2, state.total)
+            assertEquals(1, state.results.count { it.output != null })
+            assertEquals(listOf(broken.uri.toString()), RetryPolicy.failed(state.results).map { it.sourceUri })
+            assertTrue(File(root, "output/sample.jpg").exists())
+            assertFalse(File(root, "output/unselected.jpg").exists())
+            assertTrue(File(root, "source/unselected.ARW").exists())
+        }
+    }
 
     @Before fun setup() {
         root.deleteRecursively()

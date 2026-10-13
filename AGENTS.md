@@ -29,8 +29,15 @@ Rules for every coding agent:
 ## Current snapshot
 
 - Product: Raw Photo Converter for Android
-- Public version: 0.0.10-alpha
-- Private source commit: a55410c536bb57a750b93607a882059b77187880
-- Android implementation and signed APK commit: 57b7a6138a3b4598a9f2cf42e42f3c82b85aedc5
+- Public version: 0.0.11-alpha
+- Private source commit: 1555279cdf2f4fcf1d74c3e43aecd6e9a31cc59d
+- Android implementation and signed APK commit: 1555279cdf2f4fcf1d74c3e43aecd6e9a31cc59d
 - Project-owned code license: MPL-2.0; keep third-party notices separate
 - Publication model: explicit/manual only
+
+
+## Local Android design and behavior rules
+
+Use the shipped Quiet Darkroom identity: graphite/warm-paper themes, Geist typography, restrained safelight accents, soft primary and ghost secondary actions, and purposeful motion with reduced-motion support. Keep the phone workflow focused and vertical; use expanded-width layouts without compressing a desktop dashboard into a phone. Preserve accessible labels and honest empty/loading/processing/partial-failure states.
+
+Keep conversion local and native (Kotlin/Compose plus LibRaw/NDK). Use SAF, preserve aspect ratio without implicit cropping, never modify/delete original RAWs, skip existing JPEGs, and respect the configured quality floor. Long conversions must stay user-visible and cancellable. Do not invent determinate per-file progress or introduce parallel conversion before memory/thermal measurement. Preserve metadata notices and third-party licensing.

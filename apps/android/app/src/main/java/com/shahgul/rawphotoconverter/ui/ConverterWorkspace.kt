@@ -1,5 +1,6 @@
 package com.shahgul.rawphotoconverter.ui
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -32,6 +33,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -95,6 +98,7 @@ internal fun ConverterWorkspace(
     onOpenRaw: () -> Unit, onOpenFolder: () -> Unit, onOutput: () -> Unit,
     onProcessing: () -> Unit, onResults: () -> Unit, onMetadata: (Boolean) -> Unit, onConvert: () -> Unit,
     themePreference: ThemePreference, onThemeCycle: () -> Unit,
+    onRemovePhoto: (Uri) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
@@ -112,6 +116,7 @@ internal fun ConverterWorkspace(
     val count = when (source) {
         is RawSourceSummary.Folder -> source.rawCount
         is RawSourceSummary.Single -> 1
+        is RawSourceSummary.Photos -> source.photos.size
         null -> 0
     }
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
@@ -151,14 +156,14 @@ internal fun ConverterWorkspace(
                         if (expanded) {
                             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                                 Column(Modifier.weight(1f)) {
-                                    SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder)
+                                    SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder, onRemovePhoto)
                                 }
                                 Column(Modifier.weight(1f)) {
                                     RecipePanel(outputLabel, preserveMetadata, enabled, onOutput, onMetadata, mode, resolution, onMode, onResolution)
                                 }
                             }
                         } else {
-                            SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder)
+                            SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder, onRemovePhoto)
                             RecipePanel(outputLabel, preserveMetadata, enabled, onOutput, onMetadata, mode, resolution, onMode, onResolution)
                         }
                         error?.let {
@@ -260,6 +265,7 @@ private fun SourceHero(
     enabled: Boolean,
     onRaw: () -> Unit,
     onFolder: () -> Unit,
+    onRemovePhoto: (Uri) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
@@ -268,6 +274,7 @@ private fun SourceHero(
         null -> if (loading) "loading" else "empty"
         is RawSourceSummary.Single -> "single:${source.uri}"
         is RawSourceSummary.Folder -> "folder:${source.uri}:${source.rawCount}"
+        is RawSourceSummary.Photos -> "photos"
     }
     val landIn = motionMillis(220)
     val landOut = motionMillis(160)
@@ -316,9 +323,30 @@ private fun SourceHero(
                             val photoCount = when (selected) {
                                 is RawSourceSummary.Single -> 1
                                 is RawSourceSummary.Folder -> selected.rawCount
+                                is RawSourceSummary.Photos -> selected.photos.size
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 when (selected) {
+                                    is RawSourceSummary.Photos -> {
+                                        Text(selected.label, style = MaterialTheme.typography.titleLarge)
+                                        Text("Remove photos you don't want to convert.",
+                                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
+                                            items(selected.photos, key = { it.uri.toString() }) { photo ->
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                                        Text(photo.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodyMedium)
+                                                        Text(photo.sizeBytes?.let(::formatSize) ?: "Size unavailable",
+                                                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                                    }
+                                                    IconButton(onClick = { onRemovePhoto(photo.uri) }, enabled = enabled) {
+                                                        Icon(painterResource(R.drawable.ic_x), contentDescription = "Remove ${photo.label}")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     is RawSourceSummary.Single -> {
                                         SinglePhotoPreview(selected, compactWindow())
                                         selected.metadata.camera?.let {
@@ -384,7 +412,7 @@ private fun SourceHero(
                 ) {
                     Icon(painterResource(R.drawable.ic_images), null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (source == null) "Add photos" else "Change RAW")
+                    Text(if (source is RawSourceSummary.Folder) "Choose photos" else "Add photos")
                 }
                 OutlinedButton(
                     onClick = onFolder,
@@ -398,6 +426,9 @@ private fun SourceHero(
                 }
             }
             if (source is RawSourceSummary.Single) PhotoDetails(source)
+            if (source is RawSourceSummary.Single) {
+                TextButton(onClick = { onRemovePhoto(source.uri) }, enabled = enabled) { Text("Remove photo") }
+            }
         }
     }
 }
