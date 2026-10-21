@@ -41,3 +41,7 @@ Rules for every coding agent:
 Use the shipped Quiet Darkroom identity: graphite/warm-paper themes, Geist typography, restrained safelight accents, soft primary and ghost secondary actions, and purposeful motion with reduced-motion support. Keep the phone workflow focused and vertical; use expanded-width layouts without compressing a desktop dashboard into a phone. Preserve accessible labels and honest empty/loading/processing/partial-failure states.
 
 Keep conversion local and native (Kotlin/Compose plus LibRaw/NDK). Use SAF, preserve aspect ratio without implicit cropping, never modify/delete original RAWs, skip existing JPEGs, and respect the configured quality floor. Long conversions must stay user-visible and cancellable. Do not invent determinate per-file progress or introduce parallel conversion before memory/thermal measurement. Preserve metadata notices and third-party licensing.
+
+## No CI workflows here
+
+Do not add GitHub Actions workflows to this repository. Builds, tests and signing run in the private development repository, and the free GitHub Actions minutes are limited. This repository only holds the curated source snapshot, documentation and release assets.
