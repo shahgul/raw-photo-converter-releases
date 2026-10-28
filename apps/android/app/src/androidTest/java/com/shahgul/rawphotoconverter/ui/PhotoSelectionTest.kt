@@ -97,12 +97,17 @@ class PhotoSelectionTest {
             }.getOrDefault(false)
         }
         compose.onNodeWithContentDescription("Remove third.CR3").performClick()
+        compose.onNodeWithText("Remove photo?").assertExists()
+        compose.onNodeWithText("Remove").performClick()
         compose.onNodeWithText("2 selected photos").assertExists()
         compose.onNodeWithContentDescription("Remove second.ARW").performClick()
+        compose.onNodeWithText("Remove").performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("first.ARW").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("Remove photo").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Remove photo").performScrollTo().performClick()
+        compose.onNodeWithText("Remove photo?").assertExists()
+        compose.onNodeWithText("Remove").performClick()
         compose.onNodeWithText("Convert to JPEG").assertIsNotEnabled()
     }
 }

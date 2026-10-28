@@ -37,7 +37,7 @@ object CameraPreviewEncoder {
         val portrait = orientation in 5..8
         fun prepared(choice: QualityChoice) = PreparedJpeg(choice,
             if (portrait) dimensions.height else dimensions.width, if (portrait) dimensions.width else dimensions.height)
-        if (dimensions == PixelSize(bounds.outWidth, bounds.outHeight)) {
+        if (recipe.format == OutputFormat.JPEG && recipe.colorGamut == ColorGamut.SRGB && dimensions == PixelSize(bounds.outWidth, bounds.outHeight)) {
             // Strip private preview metadata even when preservation is off; ICC profiles stay.
             output.writeBytes(withoutPrivateMetadata(bytes))
             phase("Restoring metadata")
@@ -47,9 +47,13 @@ object CameraPreviewEncoder {
             cancellation.check()
             if (output.length() <= recipe.targetBytes) return prepared(QualityChoice(0, output.length(), true))
         }
-        phase("Resizing camera JPEG")
-        // Decode in sRGB before Android's JPEG encoder; no camera tone/white-balance changes.
-        val options = BitmapFactory.Options().apply { inPreferredColorSpace = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB) }
+        phase(if (recipe.format != OutputFormat.JPEG) "Developing ${recipe.format.label}" else "Resizing camera JPEG")
+        val targetColorSpace = if (recipe.colorGamut == ColorGamut.DISPLAY_P3 && android.os.Build.VERSION.SDK_INT >= 29) {
+            android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3)
+        } else {
+            android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB)
+        }
+        val options = BitmapFactory.Options().apply { inPreferredColorSpace = targetColorSpace }
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             ?: error("Unable to decode the embedded camera JPEG. Choose Develop RAW.")
         var resized: Bitmap? = null

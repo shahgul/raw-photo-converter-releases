@@ -21,6 +21,7 @@ import com.shahgul.rawphotoconverter.conversion.ConversionPolicy
 import com.shahgul.rawphotoconverter.conversion.NativeRawDecoder
 import com.shahgul.rawphotoconverter.conversion.RawInput
 import android.util.Log
+import android.provider.DocumentsContract
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID
@@ -41,6 +42,7 @@ sealed interface RawSourceSummary {
         val uri: Uri,
         val rawCount: Int,
         val totalBytes: Long,
+        val ignoredCount: Int = 0,
     ) : RawSourceSummary
 
     data class Photos(val photos: List<SelectedRaw>) : RawSourceSummary {
@@ -71,6 +73,50 @@ data class RawMetadata(
 class RawSourceRepository(private val context: Context) {
     private val resolver = context.contentResolver
 
+    suspend fun inspectSharedContent(uris: List<Uri>): SelectionInspection = withContext(Dispatchers.IO) {
+        val candidates = mutableListOf<Uri>()
+        val failures = mutableListOf<String>()
+        for (uri in uris.distinct()) {
+            currentCoroutineContext().ensureActive()
+            try {
+                require(uri.scheme == "content") { "Use Add photos or Folder for non-content file paths." }
+                val tree = DocumentsContract.isTreeUri(uri)
+                val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+                val directory = (tree && documentId == null) || resolver.getType(uri) == DocumentsContract.Document.MIME_TYPE_DIR
+                if (!directory) {
+                    candidates += uri
+                    continue
+                }
+                val id = documentId ?: DocumentsContract.getTreeDocumentId(uri)
+                val children = if (tree) DocumentsContract.buildChildDocumentsUriUsingTree(uri, id)
+                    else DocumentsContract.buildChildDocumentsUri(requireNotNull(uri.authority), id)
+                resolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val typeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    while (cursor.moveToNext()) {
+                        currentCoroutineContext().ensureActive()
+                        val name = cursor.getString(nameColumn) ?: "Unnamed item"
+                        when {
+                            cursor.getString(typeColumn) == DocumentsContract.Document.MIME_TYPE_DIR -> failures += "$name: subfolders aren't included."
+                            !ConversionPolicy.isSupportedRaw(name) -> failures += "$name: unsupported file (use ARW, CR2, or CR3)."
+                            else -> candidates += if (tree) DocumentsContract.buildDocumentUriUsingTree(uri, cursor.getString(idColumn))
+                                else DocumentsContract.buildDocumentUri(requireNotNull(uri.authority), cursor.getString(idColumn))
+                        }
+                    }
+                } ?: error("Shared folder couldn't be listed. Choose it using Folder.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Log.w("RawShare", "Shared content inspection failed", failure)
+                failures += "A shared item couldn't be opened. Choose it using Add photos or Folder."
+            }
+        }
+        val inspected = inspectSelection(candidates)
+        SelectionInspection(inspected.photos, failures + inspected.failures)
+    }
+
     suspend fun inspectSelection(uris: List<Uri>): SelectionInspection = withContext(Dispatchers.IO) {
         val photos = mutableListOf<SelectedRaw>()
         val failures = mutableListOf<String>()
@@ -79,6 +125,10 @@ class RawSourceRepository(private val context: Context) {
             try {
                 val (name, size) = queryNameAndSize(uri)
                 val label = name ?: error("The provider did not supply a filename.")
+                if (!ConversionPolicy.isSupportedRaw(label)) {
+                    failures += ConversionPolicy.unsupportedSelectionMessage(label)
+                    continue
+                }
                 ConversionPolicy.jpegName(label)
                 resolver.openFileDescriptor(uri, "r")?.use { } ?: error("$label cannot be read. Select it again.")
                 photos += SelectedRaw(uri, label, size)
@@ -103,6 +153,7 @@ class RawSourceRepository(private val context: Context) {
     suspend fun inspectRaw(uri: Uri): RawSourceSummary.Single = withContext(Dispatchers.IO) {
         val (name, size) = queryNameAndSize(uri)
         val rawName = name ?: error("The selected provider did not supply a filename.")
+        require(ConversionPolicy.isSupportedRaw(rawName)) { ConversionPolicy.unsupportedSelectionMessage(rawName) }
         ConversionPolicy.jpegName(rawName)
         val metadata = resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
             try {
@@ -233,27 +284,71 @@ class RawSourceRepository(private val context: Context) {
             ?: error("The selected folder cannot be opened.")
         check(root.isDirectory && root.canRead()) { "The selected folder is not readable. Select it again." }
 
-        val raws = root.listFiles().filter { file ->
-            file.isFile && file.name?.let(ConversionPolicy::isSupportedRaw) == true
+        val children = listDirectChildren(uri)
+        val raws = children.filter { child ->
+            child.name?.let { ConversionPolicy.isSupportedRawFile(it, child.directory) } == true
         }
 
         RawSourceSummary.Folder(
             label = root.name ?: "Selected folder",
             uri = uri,
             rawCount = raws.size,
-            totalBytes = raws.sumOf { it.length().coerceAtLeast(0L) },
+            totalBytes = raws.sumOf { it.sizeBytes },
+            ignoredCount = children.size - raws.size,
         )
     }
 
     suspend fun listFolderRaws(uri: Uri, cancellation: ConversionCancellation): List<RawInput> = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, uri) ?: error("The source folder cannot be opened.")
         check(root.isDirectory && root.canRead()) { "The source folder is not readable. Select it again." }
-        root.listFiles().mapNotNull { file ->
-            cancellation.check()
-            val name = file.name
-            if (file.isFile && name?.let(ConversionPolicy::isSupportedRaw) == true) RawInput(file.uri, name) else null
+        listDirectChildren(uri) { cancellation.check() }.mapNotNull { child ->
+            val name = child.name
+            if (name != null && ConversionPolicy.isSupportedRawFile(name, child.directory)) RawInput(child.uri, name) else null
         }.sortedBy { it.label.lowercase(java.util.Locale.ROOT) }
     }
+
+    /**
+     * Lists one folder level from the child cursor. [DocumentFile.isFile] is false when the
+     * provider omits MIME, which drops Sony .ARW files on stores that don't map that extension.
+     * A missing MIME type is not a directory; the display name decides RAW vs ignored.
+     */
+    private fun listDirectChildren(treeUri: Uri, onChild: () -> Unit = {}): List<FolderChild> {
+        val documentId = DocumentsContract.getTreeDocumentId(treeUri)
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
+        val children = mutableListOf<FolderChild>()
+        resolver.query(
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_SIZE,
+            ),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val typeColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val sizeColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+            while (cursor.moveToNext()) {
+                onChild()
+                val name = if (nameColumn >= 0 && !cursor.isNull(nameColumn)) cursor.getString(nameColumn) else null
+                val mime = if (typeColumn >= 0 && !cursor.isNull(typeColumn)) cursor.getString(typeColumn) else null
+                val size = if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) cursor.getLong(sizeColumn).coerceAtLeast(0L) else 0L
+                children += FolderChild(
+                    uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idColumn)),
+                    name = name,
+                    directory = mime == DocumentsContract.Document.MIME_TYPE_DIR,
+                    sizeBytes = size,
+                )
+            }
+        } ?: error("The selected folder cannot be listed. Select it again.")
+        return children
+    }
+
+    private data class FolderChild(val uri: Uri, val name: String?, val directory: Boolean, val sizeBytes: Long)
 
     private fun queryNameAndSize(uri: Uri): Pair<String?, Long?> {
         resolver.query(

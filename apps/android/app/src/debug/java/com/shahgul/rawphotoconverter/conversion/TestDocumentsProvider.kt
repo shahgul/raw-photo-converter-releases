@@ -72,7 +72,14 @@ class TestDocumentsProvider : DocumentsProvider() {
         for (column in columnNames) row.add(column, when (column) {
             Document.COLUMN_DOCUMENT_ID -> id(file)
             Document.COLUMN_DISPLAY_NAME -> file.name
-            Document.COLUMN_MIME_TYPE -> if (file.isDirectory) Document.MIME_TYPE_DIR else if (file.extension == "jpg") "image/jpeg" else "application/octet-stream"
+            // Sony .ARW often has no platform MIME mapping. A null type is what drops those
+            // files from DocumentFile.isFile(); folder listing must still count them.
+            Document.COLUMN_MIME_TYPE -> when {
+                file.isDirectory -> Document.MIME_TYPE_DIR
+                file.extension.equals("jpg", ignoreCase = true) || file.extension.equals("jpeg", ignoreCase = true) -> "image/jpeg"
+                file.extension.equals("arw", ignoreCase = true) -> null
+                else -> "application/octet-stream"
+            }
             Document.COLUMN_FLAGS -> if (file.isDirectory) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME
             Document.COLUMN_SIZE -> file.length()
             else -> null

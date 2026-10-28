@@ -51,4 +51,35 @@ class ConversionPolicyTest {
         assertEquals("DSC.photo.jpg", ConversionPolicy.jpegName("DSC.photo.ARW"))
         assertThrows(IllegalArgumentException::class.java) { ConversionPolicy.jpegName("picture.jpg") }
     }
+
+    @Test fun outputFormatAndNamesSupportNextGenFormats() {
+        assertEquals("DSC.photo.jpg", ConversionPolicy.outputName("DSC.photo.ARW", OutputFormat.JPEG))
+        assertEquals("DSC.photo.webp", ConversionPolicy.outputName("DSC.photo.ARW", OutputFormat.WEBP))
+        assertEquals("DSC.photo.avif", ConversionPolicy.outputName("DSC.photo.ARW", OutputFormat.AVIF))
+        assertEquals("sample.webp", ConversionPolicy.outputName("sample.CR3", OutputFormat.WEBP))
+        assertEquals(OutputFormat.JPEG, ConversionRecipe().format)
+        assertEquals(ColorGamut.SRGB, ConversionRecipe().colorGamut)
+        assertEquals(1, ColorGamut.SRGB.exifColorSpace)
+        assertEquals(65535, ColorGamut.DISPLAY_P3.exifColorSpace)
+    }
+
+    @Test fun unsupportedSelectionMessageExplainsNonRawFormats() {
+        assertTrue(ConversionPolicy.unsupportedSelectionMessage("holiday.jpg").contains("not a RAW"))
+        assertTrue(ConversionPolicy.unsupportedSelectionMessage("scan.HEIC").contains("regular photo"))
+        assertTrue(ConversionPolicy.unsupportedSelectionMessage("notes.txt").contains("not supported"))
+    }
+
+    @Test fun sonyArwNamesAreRawEvenWhenTheProviderOmitsMime() {
+        assertTrue(ConversionPolicy.isSupportedRawFile("DSC01234.ARW", directory = false))
+        assertTrue(ConversionPolicy.isSupportedRawFile("DSC01234.arw", directory = false))
+        assertTrue(ConversionPolicy.isSupportedRaw("DSC0001.ARW"))
+        assertEquals("DSC01234.jpg", ConversionPolicy.jpegName("DSC01234.ARW"))
+        assertFalse(ConversionPolicy.isSupportedRawFile("DSC01234.ARW", directory = true))
+        assertFalse(ConversionPolicy.isSupportedRawFile("DSC01234.JPG", directory = false))
+        assertFalse(ConversionPolicy.isSupportedRawFile("notes.txt", directory = false))
+        val mimes = ConversionPolicy.openDocumentMimeTypes().toSet()
+        assertTrue(mimes.contains("*/*"))
+        assertTrue(mimes.contains("image/x-sony-arw"))
+        assertTrue(mimes.contains("application/octet-stream"))
+    }
 }

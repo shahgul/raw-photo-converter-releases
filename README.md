@@ -4,13 +4,17 @@ A local-first Android RAW converter for Sony ARW and Canon CR2/CR3 files.
 
 ## Current public version
 
-**Android 0.0.11-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.11-alpha).
+**Android 0.0.20-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.20-alpha).
 
-This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. This reviewed snapshot and the Android implementation are pinned to commit `1555279cdf2f4fcf1d74c3e43aecd6e9a31cc59d`. Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
+This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. This reviewed snapshot and the Android implementation are pinned to commit `0dc9345853c5a15b40436c3161b71f5bf670c5aa`. Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
+
+**Supported:** Sony ARW and Canon CR2/CR3 RAW files on Android 8.0+ (arm64). Other camera formats (Nikon, Fujifilm, etc.) are not supported yet. This is an alpha: expect rough edges and please report them (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+**Installing:** download the APK from the release, open it on your phone, and allow installs from your browser or file manager when asked. Android or Play Protect may warn about an app from outside the Play Store; the APK is signed with the project's stable key and its SHA-256 is listed below and in `SHA256SUMS.txt`. Installing over an earlier signed alpha updates it in place.
 
 ## Android app screenshots
 
-Authentic Android app captures in workflow order. Setup screens 01–05 show the 0.0.11-alpha implementation on an API 35 emulator with supplied Sony RAW files. Processing and results retain the unchanged phone captures from the earlier alpha.
+Authentic Android app captures in workflow order, taken on 0.0.11-alpha. Screens 01–05 are from an API 35 emulator with supplied Sony RAW files; processing and results are from an earlier phone build. **The 0.0.12–0.0.20 changes (output formats, histogram, loupe, new results screen, Step 1/Step 2 labels) are not shown here yet; refreshed captures are pending.**
 
 | 01 · Add photos | 02 · Single-photo preview | 03 · Photo details |
 |:---:|:---:|:---:|
@@ -25,20 +29,20 @@ Screenshot maintenance: Android UI/workflow changes must trigger a review of thi
 
 ## What it does
 
-- Select one or multiple RAW photos through Storage Access Framework, or process supported files directly inside a selected folder.
-- Add more photos to the queue, ignore duplicate URIs, remove individual items, and retain the queue across activity recreation. One remaining photo returns to the embedded camera preview.
+- Select one or multiple RAW photos through Storage Access Framework, or process supported files directly inside a selected folder (nested subfolders are excluded). Photos can also be shared into the app.
+- Add more photos to the queue, ignore duplicate URIs, remove individual items, and retain the queue across activity recreation. One remaining photo shows the embedded camera preview, with Histogram and EXIF chips and a tap-to-open 100% loupe (pinch, pan, double-tap).
 - Develop Sony ARW and Canon CR2/CR3 locally, or extract the largest supported embedded camera JPEG with Camera look.
-- Preserve aspect ratio without implicit cropping; choose Original resolution or a 4000 px long-edge limit. JPEG size optimization respects the Q80 quality floor.
+- Output JPEG, WebP, or AVIF (AVIF on Android 14+), in sRGB or Display P3 wide gamut. Preserve aspect ratio without implicit cropping; choose Original resolution or a 4000 px long-edge limit. Size optimization respects the Q80 quality floor.
 - Preserve supported metadata when enabled, normalize orientation, and save through SAF without broad storage permissions.
-- Run sequential foreground batches with cancellation and per-file outcomes; retry failed files with their original source and recipe. Existing JPEGs are skipped and originals stay untouched.
+- Run sequential foreground batches with cancellation, a completion cue (with an in-app toggle), and a results screen listing each photo's outcome, dimensions and size; retry failed files with their original source and recipe. Existing JPEGs are skipped and originals stay untouched.
 
-Folder batches cover supported files directly in that folder; nested subfolders are excluded. Invalid or unreadable photo picks are reported without discarding valid selections. Conversion and preview processing happen on-device without accounts, telemetry, or cloud upload.
+Unsupported or unreadable picks are reported without discarding valid selections. Conversion and preview processing happen on-device without accounts, telemetry, or cloud upload.
 
 ## Alpha validation
 
-The 0.0.11-alpha checks passed 13 unit tests, 14 focused API 35 emulator instrumentation tests, release lint with zero errors, and signed release assembly. Device tests cover queue actions, picker append/deduplication/restoration, selected-only batches with partial failures, retry eligibility, cancellation, original-file safety, cleanup, and existing-JPEG skipping. The APK uses the existing stable RSA-4096 certificate and APK Signature Scheme v2. Physical-device performance and real-camera batch validation remain pending.
+The 0.0.20-alpha release was built, linted, unit-tested and signed by the maintainer's release workflow, and was run by the maintainer on a physical Android phone, where it behaved as expected. This is a smoke test, not a formal multi-device validation: performance, memory and thermal behavior across devices and real-camera batches are not yet measured. Earlier alphas passed emulator instrumentation tests with Sony ARW and Canon CR3 samples.
 
-The APK SHA-256 is `b699ee432e57c016c033dde10d661297abb22f186f4df83cabf54f8e4f28a8df`. SHA256SUMS.txt covers both the APK and exact LibRaw 0.22.2 source archive.
+The APK SHA-256 is `ddc757aab9b84d3513bbdc9954e7d25c3387b65ed3403e28ce41ddc102285373`. SHA256SUMS.txt covers both the APK and the exact LibRaw 0.22.2 source archive.
 
 ## Build
 

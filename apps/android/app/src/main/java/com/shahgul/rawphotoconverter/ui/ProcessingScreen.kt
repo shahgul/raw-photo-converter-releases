@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,9 +69,11 @@ import kotlinx.coroutines.withContext
 internal fun ProcessingScreen(
     batch: BatchState,
     error: String?,
+    sweepStartedAtMs: Long = 0L,
     onBack: () -> Unit,
     onCancel: () -> Unit,
     onViewResults: () -> Unit,
+    onSweepFinished: () -> Unit = {},
     themePreference: ThemePreference,
     onThemeCycle: () -> Unit,
 ) {
@@ -79,6 +82,9 @@ internal fun ProcessingScreen(
     val shapes = MaterialTheme.shapes
     var recipeTab by rememberSaveable { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var displayedProgress by remember { mutableFloatStateOf(0f) }
+    var sweepFinished by remember { mutableStateOf(false) }
+    val minimumSweepMs = motionMillis(1_800).toLong().let { if (it <= 0L) 1L else it }
     var memoryKiB by remember { mutableStateOf<Long?>(null) }
     val phaseIn = motionMillis(200)
     val phaseOut = motionMillis(140)
@@ -87,6 +93,40 @@ internal fun ProcessingScreen(
         while (batch.running) {
             delay(1000)
             now = SystemClock.elapsedRealtime()
+        }
+    }
+    LaunchedEffect(sweepStartedAtMs, batch.startedAtMs, batch.running, batch.finishedAtMs, batch.total, batch.processedResults.size) {
+        val anchor = when {
+            sweepStartedAtMs > 0L -> sweepStartedAtMs
+            batch.startedAtMs > 0L -> batch.startedAtMs
+            else -> return@LaunchedEffect
+        }
+        val completedFiles = batch.processedResults.size
+        val totalFiles = batch.total
+        val running = batch.running
+        val finishedAtMs = batch.finishedAtMs
+        while (!sweepFinished) {
+            val elapsed = (SystemClock.elapsedRealtime() - anchor).coerceAtLeast(0)
+            val finishedElapsed = if (!running && finishedAtMs != null) {
+                (finishedAtMs - anchor).coerceAtLeast(0)
+            } else {
+                null
+            }
+            val value = smoothProcessingProgress(
+                elapsedMs = elapsed,
+                finishedElapsedMs = finishedElapsed,
+                completedFiles = completedFiles,
+                totalFiles = totalFiles,
+                minimumSweepMs = minimumSweepMs,
+            )
+            displayedProgress = value
+            now = SystemClock.elapsedRealtime()
+            if (value >= 1f && finishedElapsed != null) {
+                sweepFinished = true
+                onSweepFinished()
+                break
+            }
+            delay(32)
         }
     }
     LaunchedEffect(batch.running) {
@@ -101,11 +141,6 @@ internal fun ProcessingScreen(
     val saved = processedResults.count { it.output != null }
     val skipped = processedResults.count { it.skipped }
     val failed = processedResults.count { it.error != null }
-    val progressFraction = if (batch.total > 1) {
-        (processedResults.size.toFloat() / batch.total).coerceIn(0f, 1f)
-    } else {
-        null
-    }
     val title = batch.sourceLabel
         ?: batch.current
         ?: processedResults.lastOrNull()?.source
@@ -119,8 +154,17 @@ internal fun ProcessingScreen(
                         .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Back to setup")
+                    if (batch.running) {
+                        TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Adjust recipe")
+                        }
+                    } else {
+                        TextButton(onClick = onViewResults, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("View results")
+                        }
+                        TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Adjust recipe")
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     ThemeToggle(themePreference, onThemeCycle)
@@ -167,27 +211,15 @@ internal fun ProcessingScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             ProgressChip("${processedResults.size} / ${batch.total}")
-                            if (progressFraction != null) {
-                                ProgressChip("${(progressFraction * 100).toInt()}%")
-                            } else {
-                                ProgressChip(elapsed?.let(::formatElapsed) ?: "—")
-                            }
+                            ProgressChip("${(displayedProgress * 100).toInt()}%")
                         }
                     }
-                    if (batch.running && batch.total <= 1) {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            color = colors.primary,
-                            trackColor = colors.surfaceContainerHighest,
-                        )
-                    } else if (batch.total > 0) {
-                        LinearProgressIndicator(
-                            progress = { progressFraction ?: (if (batch.running) 0f else 1f) },
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            color = colors.primary,
-                            trackColor = colors.surfaceContainerHighest,
-                        )
-                    }
+                    LinearProgressIndicator(
+                        progress = { displayedProgress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = colors.primary,
+                        trackColor = colors.surfaceContainerHighest,
+                    )
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

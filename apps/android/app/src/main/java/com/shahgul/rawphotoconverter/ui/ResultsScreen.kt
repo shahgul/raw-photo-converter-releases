@@ -18,12 +18,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +49,12 @@ import com.shahgul.rawphotoconverter.conversion.BatchState
 import com.shahgul.rawphotoconverter.conversion.ConversionResult
 import com.shahgul.rawphotoconverter.ui.theme.ThemePreference
 import kotlinx.coroutines.delay
+import com.shahgul.rawphotoconverter.data.savedJpegUris
+import com.shahgul.rawphotoconverter.data.ExportOptions
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -61,6 +70,10 @@ internal fun ResultsScreen(
     onViewProcessing: () -> Unit,
     themePreference: ThemePreference,
     onThemeCycle: () -> Unit,
+    onShareAll: () -> Unit = {},
+    sharing: Boolean = false,
+    exportOptions: ExportOptions = ExportOptions(),
+    onExportOptionsChange: (ExportOptions) -> Unit = {},
 ) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
@@ -70,8 +83,23 @@ internal fun ResultsScreen(
     val settleDelay = motionMillis(40).toLong()
     var settled by remember { mutableStateOf(false) }
     val failedCount = batch.results.count { it.error != null }
-    val savedCount = batch.results.count { it.output != null }
     val skippedCount = batch.results.count { it.skipped }
+    val savedCount = batch.results.count { it.error == null && !it.skipped && it.output != null }
+    val measuredBytes = batch.results.mapNotNull { result ->
+        if (result.error == null) result.sizeBytes else null
+    }
+    val many = batch.results.size > 1
+    val shareableCount = savedJpegUris(batch.results).size
+    val summaryResult = when (batch.results.size) {
+        0 -> null
+        1 -> batch.results.first()
+        else -> batch.results.lastOrNull { it.output != null } ?: batch.results.last()
+    }
+    val batchElapsedMs = if (batch.startedAtMs > 0 && batch.finishedAtMs != null) {
+        (batch.finishedAtMs - batch.startedAtMs).coerceAtLeast(0)
+    } else {
+        null
+    }
     LaunchedEffect(batch.finishedAtMs, batch.results.size) {
         settled = false
         if (batch.finishedAtMs != null && batch.results.isNotEmpty()) {
@@ -89,7 +117,7 @@ internal fun ResultsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Back to setup")
+                        Text("Adjust recipe")
                     }
                     Spacer(Modifier.weight(1f))
                     if (batch.running) {
@@ -126,10 +154,31 @@ internal fun ResultsScreen(
                                     color = colors.primary,
                                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                                 )
+                                batch.sourceLabel?.let { label ->
+                                    Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                }
                                 Text(
-                                    "$savedCount saved · $skippedCount skipped · $failedCount failed",
+                                    if (many) {
+                                        "${batch.results.size} photos · $savedCount saved · $skippedCount skipped · $failedCount failed"
+                                    } else {
+                                        "$savedCount saved · $skippedCount skipped · $failedCount failed"
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
+                                if (many && measuredBytes.isNotEmpty()) {
+                                    Text(
+                                        "${formatSize(measuredBytes.sum())} across ${measuredBytes.size} output files",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant,
+                                    )
+                                }
+                                batchElapsedMs?.let { elapsed ->
+                                    Text(
+                                        "Finished in ${formatElapsed(elapsed)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant,
+                                    )
+                                }
                                 batch.settings?.let { settings ->
                                     Text(
                                         "${modeLabel(settings.mode)} / ${resolutionLabel(settings.resolution)}",
@@ -151,6 +200,32 @@ internal fun ResultsScreen(
                                         Text("Retry failed files")
                                     }
                                 }
+                                if (!many) summaryResult?.let { result ->
+                                    Text(
+                                        result.source,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    ResultFacts(result)
+                                    result.output?.let { uri ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FilledTonalButton(
+                                                onClick = { onOpenJpeg(uri) },
+                                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                shape = shapes.medium,
+                                            ) {
+                                                Text(if (result.skipped) "Open existing" else "Open JPEG")
+                                            }
+                                            OutlinedButton(
+                                                onClick = { onShareJpeg(uri) },
+                                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                shape = shapes.medium,
+                                            ) {
+                                                Text("Share")
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -162,6 +237,11 @@ internal fun ResultsScreen(
                     batch.message?.let {
                         item {
                             Text(it, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (shareableCount > 0) {
+                        item {
+                            ExportOptionsSection(exportOptions, onExportOptionsChange, !sharing && !batch.running)
                         }
                     }
                     if (batch.results.isEmpty()) {
@@ -193,7 +273,10 @@ internal fun ResultsScreen(
                             }
                         }
                     }
-                    items(batch.results, key = { "${it.source}:${it.output}:${it.error}:${it.skipped}" }) { result ->
+                    items(
+                        if (batch.results.size == 1) emptyList() else batch.results,
+                        key = { "${it.source}:${it.output}:${it.error}:${it.skipped}" },
+                    ) { result ->
                         ResultRow(
                             result = result,
                             onOpenJpeg = onOpenJpeg,
@@ -230,6 +313,12 @@ internal fun ResultsScreen(
                                 ) { Text("Open latest JPEG") }
                             }
                         }
+                        if (shareableCount > 1) {
+                            TextButton(onClick = onShareAll, enabled = !batch.running && !sharing,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text(if (sharing) "Preparing JPEGs…" else "Share $shareableCount JPEGs")
+                            }
+                        }
                         Button(
                             onClick = onConvertMore,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
@@ -243,6 +332,65 @@ internal fun ResultsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportOptionsSection(options: ExportOptions, onChange: (ExportOptions) -> Unit, enabled: Boolean) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    Column(Modifier.fillMaxWidth()) {
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            contentPadding = PaddingValues(0.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Export options", style = MaterialTheme.typography.titleMedium)
+                Text(if (expanded) "Hide" else "Show", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+        if (expanded) {
+            // Add future option rows here; all share actions use the same typed options.
+            // The row carries the 48dp touch target; the box itself stays a quiet 20dp glyph.
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+                value = options.removeExif, enabled = enabled, role = Role.Checkbox,
+                onValueChange = { onChange(options.copy(removeExif = it)) }),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Checkbox(
+                    checked = options.removeExif,
+                    onCheckedChange = null,
+                    enabled = enabled,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text("Remove EXIF metadata", style = MaterialTheme.typography.bodyMedium)
+            }
+            Text("Removes camera, location, dates and other embedded metadata from shared copies. Saved JPEGs stay unchanged.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+            if (options.removeExif) Text("Photos that rely on EXIF rotation are rotated and re-encoded for correct viewing.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ResultFacts(result: ConversionResult) {
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        resultFacts(result).forEach { (label, value) ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    label,
+                    modifier = Modifier.weight(0.38f),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                Text(
+                    value,
+                    modifier = Modifier.weight(0.62f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (label == "Error") colors.error else colors.onSurface,
+                )
             }
         }
     }
@@ -277,15 +425,11 @@ private fun ResultRow(
                 StatusMark(mark)
                 Text(result.source, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
-            Text(
-                resultDescription(result),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (result.error != null) colors.error else colors.onSurfaceVariant,
-            )
+            ResultFacts(result)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 result.output?.let { uri ->
                     TextButton(onClick = { onOpenJpeg(uri) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                        Text("Open JPEG")
+                        Text(if (result.skipped) "Open existing" else "Open JPEG")
                     }
                     TextButton(onClick = { onShareJpeg(uri) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                         Text("Share")

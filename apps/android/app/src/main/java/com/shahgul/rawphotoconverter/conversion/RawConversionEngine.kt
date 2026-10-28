@@ -1,6 +1,7 @@
 package com.shahgul.rawphotoconverter.conversion
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -23,6 +24,8 @@ data class ConversionResult(
     val error: String? = null,
     val cameraLook: Boolean = false,
     val sourceUri: String? = null,
+    val format: OutputFormat = OutputFormat.JPEG,
+    val colorGamut: ColorGamut = ColorGamut.SRGB,
 )
 
 class RawConversionEngine(private val context: Context) {
@@ -34,9 +37,9 @@ class RawConversionEngine(private val context: Context) {
         phase: (String) -> Unit,
     ): ConversionResult {
         cancellation.check()
-        val name = ConversionPolicy.jpegName(input.label)
-        fun existing() = folder.listFiles().any { it.name?.equals(name, ignoreCase = true) == true }
-        if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
+        val name = ConversionPolicy.outputName(input.label, recipe.format)
+        fun existingFile() = folder.listFiles().firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
+        existingFile()?.let { return skippedExisting(input, it, recipe) }
         check(folder.isDirectory && folder.canWrite()) { "The output folder is not writable. Select it again." }
         val work = File(context.cacheDir, "raw-conversion-${UUID.randomUUID()}")
         check(work.mkdir()) { "Unable to create temporary conversion storage." }
@@ -63,10 +66,10 @@ class RawConversionEngine(private val context: Context) {
             } ?: error("The RAW cannot be read. Select the file again.")
             check(raw.length() > 0) { "The selected RAW is empty." }
             cancellation.check()
-            val jpeg = File(work, "output.jpg")
+            val convertedFile = File(work, "output.${recipe.format.extension}")
             val prepared = try {
                 if (recipe.mode == ConversionMode.CAMERA_LOOK) {
-                    CameraPreviewEncoder.prepare(raw, jpeg, recipe, cancellation, phase)
+                    CameraPreviewEncoder.prepare(raw, convertedFile, recipe, cancellation, phase)
                 } else {
                     phase("Developing RAW")
                     val bitmap = NativeRawDecoder.decode(raw.absolutePath, recipe.maxLongEdge, cancellation)
@@ -89,7 +92,7 @@ class RawConversionEngine(private val context: Context) {
                             }
                         }
                         PreparedJpeg(
-                            JpegEncoder.encode(bitmap, raw, jpeg, recipe, cancellation, sourceMetadata = sourceMetadata, phase = phase),
+                            JpegEncoder.encode(bitmap, raw, convertedFile, recipe, cancellation, sourceMetadata = sourceMetadata, phase = phase),
                             bitmap.width,
                             bitmap.height,
                         )
@@ -104,21 +107,21 @@ class RawConversionEngine(private val context: Context) {
             val width = prepared.width
             val height = prepared.height
             cancellation.check()
-            phase("Saving JPEG")
+            phase("Saving ${recipe.format.label}")
             // Check again after development: never open an existing document for write.
-            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
-            val stagingName = ".raw-photo-converter-${UUID.randomUUID()}.pending.jpg"
-            output = folder.createFile("image/jpeg", stagingName) ?: error("The output provider could not create a temporary JPEG.")
+            existingFile()?.let { return skippedExisting(input, it, recipe) }
+            val stagingName = ".raw-photo-converter-${UUID.randomUUID()}.pending.${recipe.format.extension}"
+            output = folder.createFile(recipe.format.mimeType, stagingName) ?: error("The output provider could not create a temporary ${recipe.format.label}.")
             val document = output
             check(document.uri != input.uri) { "The output provider returned the original RAW URI." }
-            check(document.name == stagingName) { "The output provider changed the temporary filename. No JPEG was saved." }
+            check(document.name == stagingName) { "The output provider changed the temporary filename. No ${recipe.format.label} was saved." }
             ownsOutput = true
             val preferences = context.getSharedPreferences("conversion", Context.MODE_PRIVATE)
             check(preferences.edit().putString("pendingOutput", document.uri.toString()).commit()) {
-                "Unable to record output recovery information. No JPEG was saved."
+                "Unable to record output recovery information. No ${recipe.format.label} was saved."
             }
             context.contentResolver.openOutputStream(document.uri, "w")?.use { destination ->
-                jpeg.inputStream().use { source ->
+                convertedFile.inputStream().use { source ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
                         cancellation.check()
@@ -128,7 +131,7 @@ class RawConversionEngine(private val context: Context) {
                     }
                 }
                 destination.flush()
-            } ?: error("Unable to write the JPEG in the selected output folder.")
+            } ?: error("Unable to write the ${recipe.format.label} in the selected output folder.")
             cancellation.check()
             // Re-read the provider's document, rather than trusting a successful close.
             val bytes = context.contentResolver.openInputStream(document.uri)?.use { stream ->
@@ -141,12 +144,12 @@ class RawConversionEngine(private val context: Context) {
                     total += count
                 }
                 total
-            } ?: error("The saved JPEG could not be verified.")
-            check(bytes == choice.bytes) { "The output provider saved an incomplete JPEG." }
+            } ?: error("The saved ${recipe.format.label} could not be verified.")
+            check(bytes == choice.bytes) { "The output provider saved an incomplete ${recipe.format.label}." }
             cancellation.check()
-            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString())
-            check(document.renameTo(name)) { "The output provider cannot finalize JPEG filenames. Choose another output folder." }
-            check(document.name == name) { "The output provider changed the final filename. No JPEG was saved." }
+            existingFile()?.let { return skippedExisting(input, it, recipe) }
+            check(document.renameTo(name)) { "The output provider cannot finalize filenames. Choose another output folder." }
+            check(document.name == name) { "The output provider changed the final filename. No ${recipe.format.label} was saved." }
             saved = true
             preferences.edit().remove("pendingOutput").commit()
             return ConversionResult(
@@ -159,6 +162,8 @@ class RawConversionEngine(private val context: Context) {
                 choice.targetMet,
                 cameraLook = recipe.mode == ConversionMode.CAMERA_LOOK,
                 sourceUri = input.uri.toString(),
+                format = recipe.format,
+                colorGamut = recipe.colorGamut,
             )
         } finally {
             if (!saved && ownsOutput && output?.uri != input.uri) {
@@ -173,6 +178,28 @@ class RawConversionEngine(private val context: Context) {
                 context.getSharedPreferences("conversion", Context.MODE_PRIVATE).edit().remove("pendingOutput").commit()
             }
         }
+    }
+
+    /** Existing output stays untouched. Bounds and size are read so results can describe that file. */
+    private fun skippedExisting(input: RawInput, file: DocumentFile, recipe: ConversionRecipe): ConversionResult {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        runCatching {
+            context.contentResolver.openInputStream(file.uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+        }
+        return ConversionResult(
+            source = input.label,
+            output = file.uri,
+            sizeBytes = file.length().takeIf { it > 0 },
+            width = options.outWidth.takeIf { it > 0 },
+            height = options.outHeight.takeIf { it > 0 },
+            skipped = true,
+            cameraLook = recipe.mode == ConversionMode.CAMERA_LOOK,
+            sourceUri = input.uri.toString(),
+            format = recipe.format,
+            colorGamut = recipe.colorGamut,
+        )
     }
 
     fun cleanInterruptedTemps() {
