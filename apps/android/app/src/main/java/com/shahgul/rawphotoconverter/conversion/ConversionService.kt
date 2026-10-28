@@ -35,6 +35,8 @@ data class BatchSettings(
     val metadata: Boolean,
     val destination: String,
     val outputUri: String? = null,
+    val format: OutputFormat = OutputFormat.JPEG,
+    val colorGamut: ColorGamut = ColorGamut.SRGB,
 )
 data class BatchEvent(val elapsedMs: Long, val message: String)
 
@@ -280,12 +282,16 @@ class ConversionService : Service() {
                 check(inputs.isNotEmpty()) { "No supported RAW files were found in the selected folder." }
                 val batchSettings = settings ?: run {
                     val resolution = OutputResolution.valueOf(intent.getStringExtra(RESOLUTION) ?: OutputResolution.STANDARD.name)
+                    val format = runCatching { OutputFormat.valueOf(intent.getStringExtra(FORMAT) ?: OutputFormat.JPEG.name) }.getOrDefault(OutputFormat.JPEG)
+                    val colorGamut = runCatching { ColorGamut.valueOf(intent.getStringExtra(COLOR_GAMUT) ?: ColorGamut.SRGB.name) }.getOrDefault(ColorGamut.SRGB)
                     BatchSettings(
                         mode = ConversionMode.valueOf(intent.getStringExtra(MODE) ?: ConversionMode.DEVELOP_RAW.name),
                         resolution = resolution,
                         metadata = intent.getBooleanExtra(METADATA, true),
                         destination = folder.name ?: "Selected output folder",
                         outputUri = outputUri.toString(),
+                        format = format,
+                        colorGamut = colorGamut,
                     )
                 }
                 state = state.copy(total = inputs.size, settings = batchSettings)
@@ -294,6 +300,8 @@ class ConversionService : Service() {
                     preserveMetadata = batchSettings.metadata,
                     mode = batchSettings.mode,
                     maxLongEdge = batchSettings.resolution.maxEdge,
+                    format = batchSettings.format,
+                    colorGamut = batchSettings.colorGamut,
                 )
                 for (input in inputs) {
                     token.check()
@@ -414,16 +422,38 @@ class ConversionService : Service() {
         private const val MODE = "mode"
         private const val RESOLUTION = "resolution"
         private const val METADATA = "metadata"
+        private const val FORMAT = "format"
+        private const val COLOR_GAMUT = "color_gamut"
 
-        fun start(context: Context, source: Uri, label: String, isFolder: Boolean, output: Uri, metadata: Boolean, mode: ConversionMode = ConversionMode.DEVELOP_RAW, resolution: OutputResolution = OutputResolution.STANDARD) {
+        fun start(
+            context: Context,
+            source: Uri,
+            label: String,
+            isFolder: Boolean,
+            output: Uri,
+            metadata: Boolean,
+            mode: ConversionMode = ConversionMode.DEVELOP_RAW,
+            resolution: OutputResolution = OutputResolution.STANDARD,
+            format: OutputFormat = OutputFormat.JPEG,
+            colorGamut: ColorGamut = ColorGamut.SRGB,
+        ) {
             ContextCompat.startForegroundService(context, Intent(context, ConversionService::class.java)
                 .putExtra(SOURCE, source.toString()).putExtra(LABEL, label).putExtra(FOLDER, isFolder)
                 .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
-                .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name))
+                .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name)
+                .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name))
         }
 
-        fun startPhotos(context: Context, inputs: List<RawInput>, output: Uri, metadata: Boolean,
-            mode: ConversionMode = ConversionMode.DEVELOP_RAW, resolution: OutputResolution = OutputResolution.STANDARD) {
+        fun startPhotos(
+            context: Context,
+            inputs: List<RawInput>,
+            output: Uri,
+            metadata: Boolean,
+            mode: ConversionMode = ConversionMode.DEVELOP_RAW,
+            resolution: OutputResolution = OutputResolution.STANDARD,
+            format: OutputFormat = OutputFormat.JPEG,
+            colorGamut: ColorGamut = ColorGamut.SRGB,
+        ) {
             // Keep the queue in the process, like retry requests. Large selections must
             // not put thousands of URIs into Binder extras. Process death never restarts a batch.
             val request = ConversionStore.createPhotoRequest(inputs)
@@ -431,7 +461,8 @@ class ConversionService : Service() {
                 ContextCompat.startForegroundService(context, Intent(context, ConversionService::class.java)
                     .setAction(SELECTED_PHOTOS).putExtra(LABEL, "${request.size} selected photos")
                     .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
-                    .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name))
+                    .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name)
+                    .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name))
             } catch (failure: Exception) {
                 ConversionStore.discardPhotoRequest(request)
                 throw failure

@@ -45,7 +45,7 @@ class ProcessingScreenTest {
         compose.runOnUiThread { ConversionStore.publish(running()) }
         awaitCancelVisible()
         capture("processing-running")
-        compose.onNodeWithText("Back to setup").performClick()
+        compose.onNodeWithText("Adjust recipe").performClick()
         compose.onNodeWithText("View processing").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("View processing").assertIsDisplayed()
@@ -72,9 +72,9 @@ class ProcessingScreenTest {
                 results = listOf(ConversionResult("photo.ARW", error = "Invalid RAW"), ConversionResult("existing.ARW", skipped = true))))
         }
         compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("Failed: Invalid RAW").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithText("Invalid RAW").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("Failed: Invalid RAW").assertExists()
+        compose.onNodeWithText("Invalid RAW").assertExists()
         compose.onNodeWithText("Convert more").assertIsDisplayed()
         compose.onNodeWithText("Results").assertIsDisplayed()
         capture("processing-partial-failure")

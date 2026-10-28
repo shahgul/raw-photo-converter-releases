@@ -24,16 +24,42 @@ object JpegEncoder {
         phase: (String) -> Unit,
     ): QualityChoice {
         val metadata = if (recipe.preserveMetadata) sourceMetadata ?: ExifInterface(source) else null
-        return ConversionPolicy.chooseQuality(recipe) { quality ->
-            cancellation.check()
-            phase("Optimizing JPEG · Q$quality")
-            output.outputStream().use {
-                check(bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it)) { "JPEG encoding failed." }
+        val compressFormat = when (recipe.format) {
+            OutputFormat.JPEG -> Bitmap.CompressFormat.JPEG
+            OutputFormat.WEBP -> if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
+            OutputFormat.AVIF -> runCatching {
+                Bitmap.CompressFormat.valueOf("AVIF")
+            }.getOrElse {
+                if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.JPEG
             }
-            cancellation.check()
-            phase("Restoring metadata")
-            writeMetadata(output, metadata, bitmap.width, bitmap.height, orientation)
-            output.length()
+        }
+        val targetBitmap = if (recipe.colorGamut == ColorGamut.DISPLAY_P3 && android.os.Build.VERSION.SDK_INT >= 29) {
+            try {
+                val p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3)
+                if (bitmap.isMutable) {
+                    bitmap.apply { setColorSpace(p3) }
+                } else {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, true)?.apply { setColorSpace(p3) } ?: bitmap
+                }
+            } catch (_: Exception) {
+                bitmap
+            }
+        } else bitmap
+
+        try {
+            return ConversionPolicy.chooseQuality(recipe) { quality ->
+                cancellation.check()
+                phase("Optimizing ${recipe.format.label} · Q$quality")
+                output.outputStream().use {
+                    check(targetBitmap.compress(compressFormat, quality, it)) { "${recipe.format.label} encoding failed." }
+                }
+                cancellation.check()
+                phase("Restoring metadata")
+                writeMetadata(output, metadata, targetBitmap.width, targetBitmap.height, orientation, recipe.colorGamut.exifColorSpace)
+                output.length()
+            }
+        } finally {
+            if (targetBitmap !== bitmap) targetBitmap.recycle()
         }
     }
 
@@ -52,7 +78,9 @@ object JpegEncoder {
         destination.setAttribute(ExifInterface.TAG_IMAGE_LENGTH, height.toString())
         destination.setAttribute(ExifInterface.TAG_PIXEL_X_DIMENSION, width.toString())
         destination.setAttribute(ExifInterface.TAG_PIXEL_Y_DIMENSION, height.toString())
-        destination.saveAttributes()
+        runCatching { destination.saveAttributes() }.onFailure { error ->
+            android.util.Log.w("RawConversion", "Unable to save EXIF attributes for ${output.name}: ${error.message}")
+        }
     }
 
     private fun normalizeXmp(packet: String, width: Int, height: Int, orientation: Int, colorSpace: Int): String {
