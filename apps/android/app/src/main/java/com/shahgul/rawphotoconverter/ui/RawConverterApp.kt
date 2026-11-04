@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,6 +37,7 @@ import com.shahgul.rawphotoconverter.conversion.OutputFormat
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
 import com.shahgul.rawphotoconverter.conversion.RetryPolicy
 import com.shahgul.rawphotoconverter.conversion.RawInput
+import com.shahgul.rawphotoconverter.data.DevelopedPreviewState
 import com.shahgul.rawphotoconverter.data.RawSourceRepository
 import com.shahgul.rawphotoconverter.data.RawPreviewState
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
@@ -52,6 +51,7 @@ import com.shahgul.rawphotoconverter.ui.theme.RawPhotoConverterTheme
 import com.shahgul.rawphotoconverter.ui.theme.rememberThemePreference
 import com.shahgul.rawphotoconverter.ui.theme.resolvesDark
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +69,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
         var sourceFolderUri by rememberSaveable { mutableStateOf<String?>(null) }
         var selectedPhotoUris by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
         var previewJob by remember { mutableStateOf<Job?>(null) }
+        var developJob by remember { mutableStateOf<Job?>(null) }
         var sourceRequestId by remember { mutableStateOf(0) }
         var loading by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf<String?>(null) }
@@ -80,6 +81,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
         var formatName by rememberSaveable { mutableStateOf(OutputFormat.JPEG.name) }
         var colorGamutName by rememberSaveable { mutableStateOf(ColorGamut.SRGB.name) }
         var completionFeedbackEnabled by rememberSaveable { mutableStateOf(true) }
+        var nameTemplate by rememberSaveable { mutableStateOf("{name}") }
         val mode = ConversionMode.valueOf(modeName)
         val resolution = OutputResolution.valueOf(resolutionName)
         val format = runCatching { OutputFormat.valueOf(formatName) }.getOrDefault(OutputFormat.JPEG)
@@ -92,34 +94,26 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
         val screen = runCatching { AppScreen.valueOf(screenName) }.getOrDefault(AppScreen.Setup)
         fun go(next: AppScreen) { screenName = next.name }
         var lastSeenBatch by rememberSaveable { mutableStateOf(0L) }
-        var processingEnteredAt by remember { mutableLongStateOf(0L) }
-        var feedbackArmedAt by remember { mutableLongStateOf(0L) }
-        var feedbackPlayedFor by remember { mutableLongStateOf(0L) }
-        fun showProcessing() {
-            val now = SystemClock.elapsedRealtime()
-            processingEnteredAt = now
-            feedbackArmedAt = now
-            go(AppScreen.Processing)
-        }
+        val settleMs = motionMillis(40).toLong()
         LaunchedEffect(batch.startedAtMs) {
             if (batch.running && lastSeenBatch != batch.startedAtMs) {
-                showProcessing()
+                go(AppScreen.Processing)
                 lastSeenBatch = batch.startedAtMs
             }
         }
-        LaunchedEffect(batch.finishedAtMs, batch.running, feedbackArmedAt, completionFeedbackEnabled) {
-            val armed = feedbackArmedAt
-            val finished = batch.finishedAtMs
-            if (!completionFeedbackEnabled || armed == 0L || batch.running || finished == null || finished < armed) return@LaunchedEffect
-            if (feedbackPlayedFor == finished) return@LaunchedEffect
-            feedbackPlayedFor = finished
-            CompletionFeedback.trigger(
-                context,
-                hasFailures = batch.results.any { it.error != null },
-            )
+        var wasRunningForFeedback by remember { mutableStateOf(false) }
+        LaunchedEffect(batch.running) {
+            if (wasRunningForFeedback && !batch.running && batch.finishedAtMs != null && completionFeedbackEnabled) {
+                CompletionFeedback.trigger(
+                    context,
+                    hasFailures = batch.results.any { it.error != null },
+                )
+            }
+            wasRunningForFeedback = batch.running
         }
-        fun openResultsWhenSweepFinishes() {
-            if (screenName == AppScreen.Processing.name && !ConversionStore.state.value.running) {
+        LaunchedEffect(batch.running, batch.finishedAtMs, screen) {
+            if (!batch.running && batch.finishedAtMs != null && screen == AppScreen.Processing) {
+                delay(settleMs)
                 go(AppScreen.Results)
             }
         }
@@ -181,10 +175,42 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
             selectedPhotoUris = next.photoUris
         }
 
-        fun loadSingle(uri: Uri) {
-            val requestId = ++sourceRequestId
+        fun cancelPreviewWork() {
             previewJob?.cancel()
             previewJob = null
+            developJob?.cancel()
+            developJob = null
+        }
+
+        fun requestCompareDevelop() {
+            val single = source as? RawSourceSummary.Single ?: return
+            if (single.preview !is RawPreviewState.Ready) return
+            when (single.developedPreview) {
+                DevelopedPreviewState.Loading, is DevelopedPreviewState.Ready -> return
+                DevelopedPreviewState.Idle, is DevelopedPreviewState.Failed -> Unit
+            }
+            val requestId = sourceRequestId
+            val uri = single.uri
+            source = single.copy(developedPreview = DevelopedPreviewState.Loading)
+            developJob?.cancel()
+            developJob = scope.launch {
+                val developed = try {
+                    repository.loadDevelopedPreview(uri, single.sizeBytes)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    DevelopedPreviewState.Failed(failure.message ?: "Develop preview failed.")
+                }
+                val current = source as? RawSourceSummary.Single
+                if (requestId == sourceRequestId && current != null && current.uri == uri) {
+                    source = current.copy(developedPreview = developed)
+                }
+            }
+        }
+
+        fun loadSingle(uri: Uri) {
+            val requestId = ++sourceRequestId
+            cancelPreviewWork()
             repository.persistReadPermission(uri)
             persistPhotos(listOf(uri.toString()))
             loading = true
@@ -221,8 +247,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
 
         fun loadFolder(uri: Uri) {
             val requestId = ++sourceRequestId
-            previewJob?.cancel()
-            previewJob = null
+            cancelPreviewWork()
             repository.persistReadPermission(uri)
             loading = true
             source = null
@@ -266,8 +291,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                 return
             }
             val requestId = ++sourceRequestId
-            previewJob?.cancel()
-            previewJob = null
+            cancelPreviewWork()
             additions.forEach(repository::persistReadPermission)
             loading = true
             error = null
@@ -302,8 +326,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                 is RawSourceSummary.Single -> {
                     if (selected.uri == uri) {
                         ++sourceRequestId
-                        previewJob?.cancel()
-                        previewJob = null
+                        cancelPreviewWork()
                         source = null
                         sourceFolderUri = null
                         selectedPhotoUris = emptyList()
@@ -399,7 +422,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                         context,
                         selected.photos.map { RawInput(it.uri, it.label) },
                         Uri.parse(output), preserveMetadata, mode, resolution,
-                        format, colorGamut,
+                        format, colorGamut, nameTemplate,
                     )
                 } else {
                     val input = when (selected) {
@@ -418,19 +441,26 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                         resolution,
                         format,
                         colorGamut,
+                        nameTemplate,
                     )
                 }
-                previewJob?.cancel()
-                previewJob = null
+                cancelPreviewWork()
                 val single = source as? RawSourceSummary.Single
-                if (single != null && single.preview == RawPreviewState.Loading) {
-                    source = single.copy(
-                        preview = RawPreviewState.Unavailable(
-                            "Preview loading stopped while conversion runs.",
-                        ),
-                    )
+                if (single != null) {
+                    var next = single
+                    if (next.preview == RawPreviewState.Loading) {
+                        next = next.copy(
+                            preview = RawPreviewState.Unavailable(
+                                "Preview loading stopped while conversion runs.",
+                            ),
+                        )
+                    }
+                    if (next.developedPreview is DevelopedPreviewState.Loading) {
+                        next = next.copy(developedPreview = DevelopedPreviewState.Idle)
+                    }
+                    if (next != single) source = next
                 }
-                showProcessing()
+                go(AppScreen.Processing)
                 error = null
             } catch (failure: Exception) {
                 error = failure.message ?: "Unable to start conversion."
@@ -468,11 +498,9 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                 ProcessingScreen(
                     batch = batch,
                     error = error,
-                    sweepStartedAtMs = processingEnteredAt,
                     onBack = { go(AppScreen.Setup) },
                     onCancel = { ConversionService.cancel(context) },
                     onViewResults = { go(AppScreen.Results) },
-                    onSweepFinished = ::openResultsWhenSweepFinishes,
                     themePreference = themePreference,
                     onThemeCycle = { setThemePreference(themePreference.next()) },
                 )
@@ -491,7 +519,6 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                                 check(ConversionService.retryFailed(context, sourceUri)) {
                                     "No failed RAW files are available to retry."
                                 }
-                                showProcessing()
                                 error = null
                             } catch (failure: Exception) {
                                 error = failure.message ?: "Unable to retry failed RAW files."
@@ -524,6 +551,8 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                 onColorGamut = { colorGamutName = it.name },
                 completionFeedback = completionFeedbackEnabled,
                 onCompletionFeedback = { completionFeedbackEnabled = it },
+                nameTemplate = nameTemplate,
+                onNameTemplate = { nameTemplate = it.ifBlank { "{name}" } },
                 outputLabel = outputLabel,
                 preserveMetadata = preserveMetadata,
                 error = error,
@@ -549,6 +578,7 @@ fun RawConverterApp(processingRequest: Int = 0, sharedContent: SharedContentRequ
                 themePreference = themePreference,
                 onThemeCycle = { setThemePreference(themePreference.next()) },
                 onRemovePhoto = ::removePhoto,
+                onCompareDevelop = ::requestCompareDevelop,
             )
         }
     }

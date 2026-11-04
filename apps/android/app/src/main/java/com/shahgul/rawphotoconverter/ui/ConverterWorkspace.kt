@@ -13,17 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,11 +26,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
@@ -58,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -67,10 +56,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.shahgul.rawphotoconverter.conversion.ConversionPolicy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,6 +86,7 @@ import com.shahgul.rawphotoconverter.conversion.BatchState
 import com.shahgul.rawphotoconverter.conversion.ConversionMode
 import com.shahgul.rawphotoconverter.conversion.ConversionRecipe
 import com.shahgul.rawphotoconverter.conversion.OutputResolution
+import com.shahgul.rawphotoconverter.data.DevelopedPreviewState
 import com.shahgul.rawphotoconverter.data.RawSourceSummary
 import com.shahgul.rawphotoconverter.data.RawPreviewState
 import com.shahgul.rawphotoconverter.ui.theme.MeasurementFont
@@ -114,9 +104,11 @@ internal fun ConverterWorkspace(
     onProcessing: () -> Unit, onResults: () -> Unit, onMetadata: (Boolean) -> Unit, onConvert: () -> Unit,
     themePreference: ThemePreference, onThemeCycle: () -> Unit,
     onRemovePhoto: (Uri) -> Unit = {},
+    onCompareDevelop: () -> Unit = {},
     format: OutputFormat = OutputFormat.JPEG, onFormat: (OutputFormat) -> Unit = {},
     colorGamut: ColorGamut = ColorGamut.SRGB, onColorGamut: (ColorGamut) -> Unit = {},
     completionFeedback: Boolean = true, onCompletionFeedback: (Boolean) -> Unit = {},
+    nameTemplate: String = "{name}", onNameTemplate: (String) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
@@ -169,12 +161,19 @@ internal fun ConverterWorkspace(
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 24.dp)
                             .padding(top = 4.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (expanded) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
                                 Column(Modifier.weight(1f)) {
-                                    SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder, onRemovePhoto)
+                                    SourceHero(
+                                        source, loading, enabled, onOpenRaw, onOpenFolder,
+                                        onRemovePhoto, onCompareDevelop,
+                                    )
                                 }
                                 Column(Modifier.weight(1f)) {
                                     RecipePanel(
@@ -182,16 +181,21 @@ internal fun ConverterWorkspace(
                                         mode, resolution, onMode, onResolution,
                                         format, onFormat, colorGamut, onColorGamut,
                                         completionFeedback, onCompletionFeedback,
+                                        nameTemplate, onNameTemplate,
                                     )
                                 }
                             }
                         } else {
-                            SourceHero(source, loading, enabled, onOpenRaw, onOpenFolder, onRemovePhoto)
+                            SourceHero(
+                                source, loading, enabled, onOpenRaw, onOpenFolder,
+                                onRemovePhoto, onCompareDevelop,
+                            )
                             RecipePanel(
                                 outputLabel, preserveMetadata, enabled, onOutput, onMetadata,
                                 mode, resolution, onMode, onResolution,
                                 format, onFormat, colorGamut, onColorGamut,
                                 completionFeedback, onCompletionFeedback,
+                                nameTemplate, onNameTemplate,
                             )
                         }
                         error?.let {
@@ -294,6 +298,7 @@ private fun SourceHero(
     onRaw: () -> Unit,
     onFolder: () -> Unit,
     onRemovePhoto: (Uri) -> Unit,
+    onCompareDevelop: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
@@ -309,15 +314,15 @@ private fun SourceHero(
     Surface(
         color = colors.surfaceContainerLow,
         shape = shapes.extraLarge,
-        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = if (landed) 0.75f else 0.55f)),
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = if (landed) 0.95f else 0.8f)),
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(animationSpec = tween(landIn)),
         tonalElevation = if (landed) 2.dp else 1.dp,
     ) {
         Column(
-            Modifier.padding(if (landed) 16.dp else 20.dp),
-            verticalArrangement = Arrangement.spacedBy(if (landed) 12.dp else 16.dp),
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
                 "Step 1 · Source",
@@ -361,10 +366,6 @@ private fun SourceHero(
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 when (selected) {
                                     is RawSourceSummary.Photos -> {
-                                        var pendingRemoveUri by remember { mutableStateOf<Uri?>(null) }
-                                        val pendingLabel = pendingRemoveUri?.let { uri ->
-                                            selected.photos.firstOrNull { it.uri == uri }?.label
-                                        }
                                         Text(selected.label, style = MaterialTheme.typography.titleLarge)
                                         Text("Remove photos you don't want to convert.",
                                             style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
@@ -377,53 +378,22 @@ private fun SourceHero(
                                                         Text(photo.sizeBytes?.let(::formatSize) ?: "Size unavailable",
                                                             style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                                                     }
-                                                    IconButton(
-                                                        onClick = { pendingRemoveUri = photo.uri },
-                                                        enabled = enabled,
-                                                    ) {
+                                                    IconButton(onClick = { onRemovePhoto(photo.uri) }, enabled = enabled) {
                                                         Icon(painterResource(R.drawable.ic_x), contentDescription = "Remove ${photo.label}")
                                                     }
                                                 }
                                             }
                                         }
-                                        pendingRemoveUri?.let { uri ->
-                                            RemovePhotoConfirmationDialog(
-                                                photoLabel = pendingLabel,
-                                                onConfirm = {
-                                                    onRemovePhoto(uri)
-                                                    pendingRemoveUri = null
-                                                },
-                                                onDismiss = { pendingRemoveUri = null },
-                                            )
-                                        }
                                     }
                                     is RawSourceSummary.Single -> {
-                                        var showHistogram by rememberSaveable(selected.uri.toString()) { mutableStateOf(false) }
-                                        var showDetails by rememberSaveable(selected.uri.toString()) { mutableStateOf(false) }
-
                                         SinglePhotoPreview(
-                                            source = selected,
-                                            compactHeight = compactWindow(),
-                                            enabled = enabled,
-                                            histogramActive = showHistogram,
-                                            detailsActive = showDetails,
-                                            onToggleHistogram = { showHistogram = !showHistogram },
-                                            onToggleDetails = { showDetails = !showDetails },
-                                            onRemove = { onRemovePhoto(selected.uri) },
+                                            selected,
+                                            compactWindow(),
+                                            onCompareDevelop = onCompareDevelop,
                                         )
-                                        val previewBitmap = (selected.preview as? RawPreviewState.Ready)?.bitmap
-                                        HistogramCard(
-                                            previewBitmap = previewBitmap,
-                                            expanded = showHistogram,
-                                            onExpandedChange = { showHistogram = it },
-                                            showHeader = false,
-                                        )
-                                        PhotoDetails(
-                                            source = selected,
-                                            open = showDetails,
-                                            onOpenChange = { showDetails = it },
-                                            showHeader = false,
-                                        )
+                                        selected.metadata.camera?.let {
+                                            Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        }
                                     }
                                     is RawSourceSummary.Folder -> {
                                         if (selected.ignoredCount > 0) {
@@ -506,6 +476,12 @@ private fun SourceHero(
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
             )
+            if (source is RawSourceSummary.Single) {
+                val previewBitmap = (source.preview as? RawPreviewState.Ready)?.bitmap
+                HistogramCard(previewBitmap = previewBitmap)
+                PhotoDetails(source)
+                TextButton(onClick = { onRemovePhoto(source.uri) }, enabled = enabled) { Text("Remove photo") }
+            }
         }
     }
 }
@@ -514,19 +490,22 @@ private fun SourceHero(
 private fun SinglePhotoPreview(
     source: RawSourceSummary.Single,
     compactHeight: Boolean,
-    enabled: Boolean = true,
-    histogramActive: Boolean = false,
-    detailsActive: Boolean = false,
-    onToggleHistogram: () -> Unit = {},
-    onToggleDetails: () -> Unit = {},
-    onRemove: () -> Unit = {},
+    onCompareDevelop: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
     val previewHeight = if (compactHeight) 170.dp else 260.dp
-    var loupeOpen by rememberSaveable(source.uri.toString()) { mutableStateOf(false) }
-    var confirmRemove by rememberSaveable(source.uri.toString()) { mutableStateOf(false) }
-
+    var loupeBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    if (loupeBitmap != null) {
+        PreviewLoupe(
+            bitmap = loupeBitmap!!,
+            label = source.label,
+            onDismiss = { loupeBitmap = null },
+        )
+    }
+    val cameraReady = source.preview as? RawPreviewState.Ready
+    val developedReady = source.developedPreview as? DevelopedPreviewState.Ready
+    val comparing = cameraReady != null && developedReady != null
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             Modifier
@@ -535,535 +514,165 @@ private fun SinglePhotoPreview(
                 .clip(shapes.medium)
                 .background(colors.surfaceContainerHighest),
         ) {
-            when (val preview = source.preview) {
-                RawPreviewState.Loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp)
-                    }
-                }
-                is RawPreviewState.Ready -> {
-                    Image(
-                        bitmap = preview.bitmap.asImageBitmap(),
-                        contentDescription = "Embedded camera JPEG preview for ${source.label}",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { loupeOpen = true },
-                                    onDoubleTap = { loupeOpen = true },
-                                )
-                            },
-                        contentScale = ContentScale.Fit,
+            when {
+                comparing -> {
+                    BeforeAfterSplit(
+                        before = cameraReady!!.bitmap.asImageBitmap(),
+                        after = developedReady!!.bitmap.asImageBitmap(),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-                is RawPreviewState.Unavailable -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            preview.message,
-                            modifier = Modifier.padding(24.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.onSurfaceVariant,
+                else -> when (val preview = source.preview) {
+                    RawPreviewState.Loading -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp)
+                        }
+                    }
+                    is RawPreviewState.Ready -> {
+                        Image(
+                            bitmap = preview.bitmap.asImageBitmap(),
+                            contentDescription = "Embedded camera JPEG preview for ${source.label}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
                         )
                     }
-                }
-            }
-
-            // Top gradient scrim for high-key photo contrast & overlay legibility
-            Box(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(68.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.68f), Color.Transparent),
-                        ),
-                    ),
-            )
-
-            // Top action controls: Overlaid pills & ✕ dismiss button
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, top = 10.dp, end = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Left cluster: Histogram & EXIF pills (horizontally scrollable if screen/font requires)
-                Row(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val hasPreview = source.preview is RawPreviewState.Ready
-                    if (hasPreview) {
-                        OverlayChip(
-                            label = "Histogram",
-                            iconRes = R.drawable.ic_chart_bar,
-                            active = histogramActive,
-                            onClick = onToggleHistogram,
-                        )
-                    }
-                    OverlayChip(
-                        label = "EXIF",
-                        iconRes = R.drawable.ic_aperture,
-                        active = detailsActive,
-                        onClick = onToggleDetails,
-                    )
-                }
-
-                // Right cluster: Remove photo circle button (48dp accessible touch target, 32dp tactile disc)
-                Box(
-                    modifier = Modifier.size(48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Surface(
-                        onClick = { confirmRemove = true },
-                        enabled = enabled,
-                        shape = CircleShape,
-                        color = Color(0xFF121418).copy(alpha = 0.88f),
-                        contentColor = Color.White,
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_x),
-                                contentDescription = "Remove photo",
-                                modifier = Modifier.size(15.dp),
-                                tint = Color.White.copy(alpha = 0.92f),
+                    is RawPreviewState.Unavailable -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                preview.message,
+                                modifier = Modifier.padding(24.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
                             )
                         }
                     }
                 }
             }
 
-            // Bottom gradient scrim
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(82.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
-                        ),
-                    ),
-            )
-
-            Column(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(start = 48.dp, end = 48.dp, bottom = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    source.label,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val metaSubtitle = buildString {
-                    source.metadata.camera?.let { append("$it · ") }
-                    append("1 RAW · ")
-                    append(formatSize(source.sizeBytes))
+            if (source.developedPreview is DevelopedPreviewState.Loading) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Developing compare preview…",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
+                        )
+                    }
                 }
-                Text(
-                    metaSubtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.84f),
-                    fontFamily = MeasurementFont,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
 
-            Text(
-                "01",
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, bottom = 15.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.72f),
-                fontFamily = MeasurementFont,
-                fontWeight = FontWeight.Medium,
-            )
+            if (!comparing) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(82.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
+                            ),
+                        ),
+                )
+
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 48.dp, end = 48.dp, bottom = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        source.label,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "1 RAW · ${formatSize(source.sizeBytes)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.84f),
+                        fontFamily = MeasurementFont,
+                        maxLines = 1,
+                    )
+                }
+
+                Text(
+                    "01",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 14.dp, bottom = 15.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontFamily = MeasurementFont,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
 
-        if (source.preview is RawPreviewState.Ready) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Embedded camera JPEG preview", style = MaterialTheme.typography.labelLarge)
+        if (cameraReady != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    "Develop RAW may render differently. Tap the photo to inspect 100% details.",
+                    if (comparing) "Camera JPEG vs Develop RAW" else "Embedded camera JPEG preview",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    if (comparing) {
+                        "Drag the split to compare. Framing stays Fit — no invented pixels."
+                    } else {
+                        "Develop RAW may render differently."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                 )
-            }
-        }
-
-        if (confirmRemove) {
-            RemovePhotoConfirmationDialog(
-                photoLabel = source.label,
-                onConfirm = {
-                    confirmRemove = false
-                    onRemove()
-                },
-                onDismiss = { confirmRemove = false },
-            )
-        }
-
-        if (loupeOpen && source.preview is RawPreviewState.Ready) {
-            PhotoLoupeDialog(
-                previewBitmap = source.preview.bitmap,
-                title = source.label,
-                onDismiss = { loupeOpen = false },
-            )
-        }
-    }
-}
-
-@Composable
-private fun RemovePhotoConfirmationDialog(
-    photoLabel: String?,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Remove photo?") },
-        text = {
-            Text(
-                if (photoLabel != null) {
-                    "$photoLabel will be removed from this queue. Your original file is not deleted."
-                } else {
-                    "This removes the photo from your conversion queue. Your original file is not deleted."
-                },
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Remove") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Keep") }
-        },
-    )
-}
-
-@Composable
-private fun OverlayChip(
-    label: String,
-    iconRes: Int,
-    active: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val activeBorder = Color(0xFFF97316) // Safelight orange accent
-    val inactiveBorder = Color.White.copy(alpha = 0.25f)
-    val activeBg = Color(0xFF1E1712).copy(alpha = 0.94f)
-    val inactiveBg = Color(0xFF121418).copy(alpha = 0.88f)
-    val activeContent = Color(0xFFFFA057)
-    val inactiveContent = Color.White.copy(alpha = 0.92f)
-
-    Box(
-        modifier = modifier.heightIn(min = 48.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Surface(
-            onClick = onClick,
-            shape = CircleShape,
-            color = if (active) activeBg else inactiveBg,
-            contentColor = if (active) activeContent else inactiveContent,
-            border = BorderStroke(1.dp, if (active) activeBorder else inactiveBorder),
-            tonalElevation = 2.dp,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(13.dp),
-                    tint = if (active) activeContent else inactiveContent,
-                )
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (active) activeContent else inactiveContent,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Fullscreen Interactive 100% Loupe / Pinch-to-Zoom inspection dialog.
- * Allows photographers to check critical focus, fine detail, and exposure clipping without leave.
- */
-@Composable
-private fun PhotoLoupeDialog(
-    previewBitmap: android.graphics.Bitmap,
-    title: String,
-    onDismiss: () -> Unit,
-) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    var controlsVisible by remember { mutableStateOf(true) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF090A0C)),
-        ) {
-            // Interactive Pan & Zoom Viewport
-            BoxWithConstraints(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                val containerWidth = constraints.maxWidth.toFloat()
-                val containerHeight = constraints.maxHeight.toFloat()
-                val fitDims = remember(containerWidth, containerHeight, previewBitmap) {
-                    PhotoLoupeMath.calculateFitDimensions(
-                        containerWidth = containerWidth,
-                        containerHeight = containerHeight,
-                        imageWidth = previewBitmap.width.toFloat(),
-                        imageHeight = previewBitmap.height.toFloat(),
-                    )
-                }
-
-                LaunchedEffect(containerWidth, containerHeight) {
-                    if (scale <= 1f) {
-                        offset = Offset.Zero
-                    } else {
-                        val bounds = PhotoLoupeMath.calculateMaxPanOffsets(
-                            renderedWidth = fitDims.width,
-                            renderedHeight = fitDims.height,
-                            scale = scale,
-                            containerWidth = containerWidth,
-                            containerHeight = containerHeight,
-                        )
-                        offset = Offset(
-                            x = offset.x.coerceIn(-bounds.width, bounds.width),
-                            y = offset.y.coerceIn(-bounds.height, bounds.height),
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(containerWidth, containerHeight) {
-                            detectTapGestures(
-                                onTap = { controlsVisible = !controlsVisible },
-                                onDoubleTap = { tapOffset ->
-                                    if (scale > 1.05f) {
-                                        scale = 1f
-                                        offset = Offset.Zero
-                                    } else {
-                                        val targetScale = 2.5f
-                                        offset = PhotoLoupeMath.calculateDoubleTapOffset(
-                                            tapOffset = tapOffset,
-                                            containerWidth = containerWidth,
-                                            containerHeight = containerHeight,
-                                            targetScale = targetScale,
-                                            renderedWidth = fitDims.width,
-                                            renderedHeight = fitDims.height,
-                                        )
-                                        scale = targetScale
-                                    }
-                                },
-                            )
-                        }
-                        .pointerInput(containerWidth, containerHeight) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val newScale = (scale * zoom).coerceIn(1.0f, 6.0f)
-                                scale = newScale
-                                if (newScale <= 1.0f) {
-                                    offset = Offset.Zero
-                                } else {
-                                    val bounds = PhotoLoupeMath.calculateMaxPanOffsets(
-                                        renderedWidth = fitDims.width,
-                                        renderedHeight = fitDims.height,
-                                        scale = newScale,
-                                        containerWidth = containerWidth,
-                                        containerHeight = containerHeight,
-                                    )
-                                    val newOffset = offset + pan
-                                    offset = Offset(
-                                        x = newOffset.x.coerceIn(-bounds.width, bounds.width),
-                                        y = newOffset.y.coerceIn(-bounds.height, bounds.height),
-                                    )
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        bitmap = previewBitmap.asImageBitmap(),
-                        contentDescription = "Zoomed preview for $title",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = offset.x
-                                translationY = offset.y
-                            },
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-
-                // Top Bar Scrim and Controls (fades with controlsVisible)
-                AnimatedVisibility(
-                    visible = controlsVisible,
-                    enter = fadeIn(motionTween(180)),
-                    exit = fadeOut(motionTween(140)),
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(120.dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent),
-                                    ),
-                                ),
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                when (val developed = source.developedPreview) {
+                    DevelopedPreviewState.Idle -> {
+                        TextButton(
+                            onClick = onCompareDevelop,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = "${previewBitmap.width} × ${previewBitmap.height} px · ${PhotoLoupeMath.formatMagnification(scale)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.72f),
-                                    fontFamily = MeasurementFont,
-                                )
-                            }
-
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                val isZoomed = scale > 1.05f
-                                Surface(
-                                    onClick = {
-                                        if (isZoomed) {
-                                            scale = 1f
-                                            offset = Offset.Zero
-                                        } else {
-                                            scale = 2.5f
-                                            offset = Offset.Zero
-                                        }
-                                    },
-                                    shape = CircleShape,
-                                    color = if (isZoomed) Color(0xFF1E1712).copy(alpha = 0.94f) else Color(0xFF121418).copy(alpha = 0.88f),
-                                    contentColor = if (isZoomed) Color(0xFFFFA057) else Color.White.copy(alpha = 0.92f),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isZoomed) Color(0xFFF97316) else Color.White.copy(alpha = 0.25f),
-                                    ),
-                                    modifier = Modifier.height(34.dp),
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.padding(horizontal = 12.dp),
-                                    ) {
-                                        Text(
-                                            text = if (isZoomed) "Fit" else "2.5×",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                }
-
-                                // Close button (48dp touch target, 36dp pill surface)
-                                Box(
-                                    modifier = Modifier.size(48.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Surface(
-                                        onClick = onDismiss,
-                                        shape = CircleShape,
-                                        color = Color(0xFF121418).copy(alpha = 0.88f),
-                                        contentColor = Color.White,
-                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                                        modifier = Modifier.size(36.dp),
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_x),
-                                                contentDescription = "Close loupe",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = Color.White.copy(alpha = 0.92f),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            Text("Compare Develop")
                         }
                     }
-                }
-
-                // Bottom hint bar (fades with controlsVisible)
-                AnimatedVisibility(
-                    visible = controlsVisible,
-                    enter = fadeIn(motionTween(180)),
-                    exit = fadeOut(motionTween(140)),
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)),
-                                ),
-                            ),
-                        contentAlignment = Alignment.BottomCenter,
-                    ) {
+                    DevelopedPreviewState.Loading -> {
                         Text(
-                            text = "Pinch to zoom · Double-tap for 2.5× · Tap for clean view",
-                            modifier = Modifier
-                                .navigationBarsPadding()
-                                .padding(bottom = 14.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.65f),
+                            "Developing a bounded compare preview…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
                         )
                     }
+                    is DevelopedPreviewState.Failed -> {
+                        Text(
+                            developed.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error,
+                        )
+                        TextButton(
+                            onClick = onCompareDevelop,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text("Retry compare")
+                        }
+                    }
+                    is DevelopedPreviewState.Ready -> Unit
+                }
+                TextButton(
+                    onClick = { loupeBitmap = cameraReady.bitmap.asImageBitmap() },
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Inspect 100%")
                 }
             }
         }
@@ -1087,17 +696,23 @@ private fun RecipePanel(
     onColorGamut: (ColorGamut) -> Unit,
     completionFeedback: Boolean,
     onCompletionFeedback: (Boolean) -> Unit,
+    nameTemplate: String,
+    onNameTemplate: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
     var showOutputInfo by rememberSaveable { mutableStateOf(false) }
-    val recipe = remember(mode, resolution, format, colorGamut) {
+    val recipe = remember(mode, resolution, format, colorGamut, nameTemplate) {
         ConversionRecipe(
             mode = mode,
             maxLongEdge = resolution.maxEdge,
             format = format,
             colorGamut = colorGamut,
+            nameTemplate = nameTemplate.ifBlank { "{name}" },
         )
+    }
+    val exampleName = remember(recipe) {
+        runCatching { ConversionPolicy.outputName("DSC00001.ARW", recipe) }.getOrDefault("DSC00001.${format.extension}")
     }
     if (showOutputInfo) {
         AlertDialog(
@@ -1116,6 +731,7 @@ private fun RecipePanel(
                     )
                     Text("Format: JPEG is universal; WebP is efficient for web and sharing; AVIF offers next-gen compression on Android 14+.")
                     Text("Color space: sRGB is standard across all screens. Display P3 preserves wide color volume on modern OLED displays.")
+                    Text("Filename templates build the stem before the format extension. {name} is the RAW stem, {edge} is 4000 or original, {mode} is develop or camera.")
                     Text("No crop or upscaling. The source aspect ratio is preserved. Standard caps the long edge at ${OutputResolution.STANDARD.maxEdge} px; Original keeps the available resolution and may use more memory.")
                     Text("When encoding is needed, quality goes from Q${recipe.maxQuality} down to Q${recipe.minQuality} to try to meet the ${recipe.targetBytes / 1048576} MiB target. Q${recipe.minQuality} is the floor, so image quality takes priority over the size target.")
                     Text("When enabled, supported EXIF/XMP is kept. Maker notes and binary IPTC aren't copied.")
@@ -1126,231 +742,270 @@ private fun RecipePanel(
             },
         )
     }
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(
-            "Step 2 · Output",
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurfaceVariant,
-        )
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Recipe", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            IconButton(
-                onClick = { showOutputInfo = true },
-                modifier = Modifier.size(48.dp).semantics { contentDescription = "About conversion output" },
-            ) {
-                Icon(painterResource(R.drawable.ic_info), contentDescription = null, tint = colors.onSurfaceVariant)
-            }
-        }
-        Surface(
-            onClick = onOutput,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-            shape = shapes.large,
-            color = colors.surfaceContainer,
-            tonalElevation = 1.dp,
+    val hasOutput = !outputLabel.isNullOrBlank()
+    Surface(
+        color = colors.surfaceContainerLow,
+        shape = shapes.extraLarge,
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = if (hasOutput) 0.95f else 0.8f)),
+        modifier = Modifier.fillMaxWidth(),
+        tonalElevation = if (hasOutput) 2.dp else 1.dp,
+    ) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text(
+                "Step 2 · Output",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+            )
             Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Save JPEGs to", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
-                    Text(
-                        outputLabel ?: "Choose output folder",
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                Text("Recipe", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                IconButton(
+                    onClick = { showOutputInfo = true },
+                    modifier = Modifier.size(48.dp).semantics { contentDescription = "About conversion output" },
+                ) {
+                    Icon(painterResource(R.drawable.ic_info), contentDescription = null, tint = colors.onSurfaceVariant)
+                }
+            }
+            Surface(
+                onClick = onOutput,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = shapes.medium,
+                color = colors.surfaceContainerHighest,
+                tonalElevation = 0.dp,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Save to", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                        Text(
+                            outputLabel ?: "Choose output folder",
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_right),
+                        contentDescription = if (outputLabel == null) "Choose" else "Change",
+                        tint = colors.primary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-                Icon(
-                    painterResource(R.drawable.ic_chevron_right),
-                    contentDescription = if (outputLabel == null) "Choose" else "Change",
-                    tint = colors.primary,
-                    modifier = Modifier.size(20.dp),
-                )
             }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Format", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
-            val formats = listOf(OutputFormat.JPEG, OutputFormat.WEBP, OutputFormat.AVIF)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                formats.forEachIndexed { index, item ->
-                    val supported = item.isSupported
+            RecipeSection(label = "Format") {
+                val formats = listOf(OutputFormat.JPEG, OutputFormat.WEBP, OutputFormat.AVIF)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    formats.forEachIndexed { index, item ->
+                        val supported = item.isSupported
+                        SegmentedButton(
+                            selected = format == item,
+                            onClick = { if (supported) onFormat(item) },
+                            enabled = enabled && supported,
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = formats.size),
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+            }
+            RecipeSection(label = "Color space") {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     SegmentedButton(
-                        selected = format == item,
-                        onClick = { if (supported) onFormat(item) },
-                        enabled = enabled && supported,
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = formats.size),
-                        label = { Text(item.label) },
-                    )
-                }
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Color space", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
-                Text(
-                    if (colorGamut == ColorGamut.DISPLAY_P3) "Wide gamut" else "Standard sRGB",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.primary,
-                )
-            }
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = colorGamut == ColorGamut.SRGB,
-                    onClick = { onColorGamut(ColorGamut.SRGB) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("sRGB") },
-                )
-                SegmentedButton(
-                    selected = colorGamut == ColorGamut.DISPLAY_P3,
-                    onClick = { onColorGamut(ColorGamut.DISPLAY_P3) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("Display P3") },
-                )
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Conversion", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = mode == ConversionMode.DEVELOP_RAW,
-                    onClick = { onMode(ConversionMode.DEVELOP_RAW) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("Develop") },
-                )
-                SegmentedButton(
-                    selected = mode == ConversionMode.CAMERA_LOOK,
-                    onClick = { onMode(ConversionMode.CAMERA_LOOK) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("Camera look") },
-                )
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Resolution", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = resolution == OutputResolution.STANDARD,
-                    onClick = { onResolution(OutputResolution.STANDARD) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("Standard") },
-                )
-                SegmentedButton(
-                    selected = resolution == OutputResolution.ORIGINAL,
-                    onClick = { onResolution(OutputResolution.ORIGINAL) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("Original") },
-                )
-            }
-        }
-        Surface(color = colors.surfaceContainer, shape = shapes.large, modifier = Modifier.fillMaxWidth()) {
-            Column {
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Keep metadata", style = MaterialTheme.typography.bodyLarge)
-                        Text("Camera, lens & GPS", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                    }
-                    Switch(
-                        checked = metadata,
-                        onCheckedChange = onMetadata,
+                        selected = colorGamut == ColorGamut.SRGB,
+                        onClick = { onColorGamut(ColorGamut.SRGB) },
                         enabled = enabled,
-                        modifier = Modifier.semantics { contentDescription = "Keep metadata, including GPS location" },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        label = { Text("sRGB") },
                     )
-                }
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Completion alert", style = MaterialTheme.typography.bodyLarge)
-                        Text("Haptic pulse and chime when done", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                    }
-                    Switch(
-                        checked = completionFeedback,
-                        onCheckedChange = onCompletionFeedback,
+                    SegmentedButton(
+                        selected = colorGamut == ColorGamut.DISPLAY_P3,
+                        onClick = { onColorGamut(ColorGamut.DISPLAY_P3) },
                         enabled = enabled,
-                        modifier = Modifier.semantics { contentDescription = "Alert with haptics and audio when conversion finishes" },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        label = { Text("Display P3") },
                     )
                 }
             }
+            RecipeSection(label = "Conversion") {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = mode == ConversionMode.DEVELOP_RAW,
+                        onClick = { onMode(ConversionMode.DEVELOP_RAW) },
+                        enabled = enabled,
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        label = { Text("Develop") },
+                    )
+                    SegmentedButton(
+                        selected = mode == ConversionMode.CAMERA_LOOK,
+                        onClick = { onMode(ConversionMode.CAMERA_LOOK) },
+                        enabled = enabled,
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        label = { Text("Camera look") },
+                    )
+                }
+            }
+            RecipeSection(label = "Resolution") {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = resolution == OutputResolution.STANDARD,
+                        onClick = { onResolution(OutputResolution.STANDARD) },
+                        enabled = enabled,
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        label = { Text("Standard") },
+                    )
+                    SegmentedButton(
+                        selected = resolution == OutputResolution.ORIGINAL,
+                        onClick = { onResolution(OutputResolution.ORIGINAL) },
+                        enabled = enabled,
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        label = { Text("Original") },
+                    )
+                }
+            }
+            RecipeSection(label = "Filename") {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("{name}", "{name}_{edge}", "{name}_{mode}").forEach { preset ->
+                        val selected = nameTemplate == preset
+                        if (selected) {
+                            FilledTonalButton(
+                                onClick = { onNameTemplate(preset) },
+                                enabled = enabled,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = colors.primaryContainer,
+                                    contentColor = colors.onPrimaryContainer,
+                                ),
+                            ) { Text(preset, style = MaterialTheme.typography.labelMedium) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onNameTemplate(preset) },
+                                enabled = enabled,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            ) { Text(preset, style = MaterialTheme.typography.labelMedium) }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = nameTemplate,
+                    onValueChange = onNameTemplate,
+                    enabled = enabled,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Template") },
+                    supportingText = {
+                        Text("Example: $exampleName · tokens {name} {edge} {mode}")
+                    },
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                RecipeToggleRow(
+                    title = "Keep metadata",
+                    subtitle = "Camera, lens & GPS",
+                    checked = metadata,
+                    enabled = enabled,
+                    onCheckedChange = onMetadata,
+                    contentDescription = "Keep metadata, including GPS location",
+                )
+                RecipeToggleRow(
+                    title = "Completion alert",
+                    subtitle = "Haptic pulse and chime when done",
+                    checked = completionFeedback,
+                    enabled = enabled,
+                    onCheckedChange = onCompletionFeedback,
+                    contentDescription = "Alert with haptics and audio when conversion finishes",
+                )
+            }
+            Text(
+                "Output only — RAW originals stay untouched.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
         }
     }
 }
 
 @Composable
-private fun PhotoDetails(
-    source: RawSourceSummary.Single,
-    open: Boolean = false,
-    onOpenChange: ((Boolean) -> Unit)? = null,
-    showHeader: Boolean = true,
-) {
-    var internalOpen by rememberSaveable(source.uri.toString()) { mutableStateOf(false) }
-    val isOpen = if (onOpenChange != null) open else internalOpen
-    fun setOpen(value: Boolean) {
-        if (onOpenChange != null) onOpenChange(value)
-        else internalOpen = value
+private fun RecipeSection(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
     }
+}
 
+@Composable
+private fun RecipeToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    contentDescription: String,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.semantics { this.contentDescription = contentDescription },
+        )
+    }
+}
+
+@Composable
+private fun PhotoDetails(source: RawSourceSummary.Single) {
+    var open by rememberSaveable(source.uri.toString()) { mutableStateOf(false) }
     Column {
-        if (showHeader) {
-            TextButton(
-                onClick = { setOpen(!isOpen) },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.heightIn(min = 48.dp),
-            ) {
-                Text(if (isOpen) "Hide photo details" else "Photo details")
-            }
+        TextButton(
+            onClick = { open = !open },
+            contentPadding = PaddingValues(0.dp),
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+            Text(if (open) "Hide photo details" else "Photo details")
         }
         AnimatedVisibility(
-            visible = isOpen,
+            visible = open,
             enter = fadeIn(motionTween(180)),
             exit = fadeOut(motionTween(140)),
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = MaterialTheme.shapes.medium,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                tonalElevation = 1.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 8.dp),
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        "Camera & EXIF metadata",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
-                    val metadata = source.metadata
-                    val rows = listOfNotNull(
-                        metadata.camera?.let { "Camera" to it },
-                        metadata.lens?.let { "Lens" to it },
-                        metadata.dateTimeOriginal?.let { "Captured" to it },
-                        metadata.iso?.let { "ISO" to it },
-                        metadata.aperture?.let { "Aperture" to "f/$it" },
-                        metadata.exposure?.let { "Exposure" to "${it}s" },
-                        metadata.focalLength?.let { "Focal length" to "$it mm" },
-                        metadata.orientation?.let { "Source orientation" to it.toString() },
-                    )
-                    if (rows.isEmpty()) {
-                        Text("No additional metadata found.", style = MaterialTheme.typography.bodySmall)
-                    }
-                    for ((label, value) in rows) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontFamily = MeasurementFont)
-                        }
+            val metadata = source.metadata
+            val rows = listOfNotNull(
+                metadata.lens?.let { "Lens" to it },
+                metadata.dateTimeOriginal?.let { "Captured" to it },
+                metadata.iso?.let { "ISO" to it },
+                metadata.aperture?.let { "Aperture" to "f/$it" },
+                metadata.exposure?.let { "Exposure" to "${it}s" },
+                metadata.focalLength?.let { "Focal length" to "$it mm" },
+                metadata.orientation?.let { "Source orientation" to it.toString() },
+            )
+            Column {
+                if (rows.isEmpty()) {
+                    Text("No additional metadata found.", style = MaterialTheme.typography.bodySmall)
+                }
+                for ((label, value) in rows) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -1364,21 +1019,34 @@ internal fun StatusMark(state: String) {
     val colors = MaterialTheme.colorScheme
     val morph = motionMillis(180)
     Crossfade(targetState = state, animationSpec = tween(morph), label = "status-mark") { current ->
-        if (current == "running") {
-            CircularProgressIndicator(Modifier.size(18.dp), color = colors.primary, strokeWidth = 1.5.dp)
-        } else {
-            Icon(
+        when (current) {
+            "running" -> CircularProgressIndicator(
+                Modifier.size(18.dp),
+                color = colors.primary,
+                strokeWidth = 1.5.dp,
+            )
+            else -> Icon(
                 painterResource(
-                    if (current == "done") R.drawable.ic_check
-                    else if (current == "failed") R.drawable.ic_x
-                    else R.drawable.ic_chevron_right,
+                    when (current) {
+                        "done" -> R.drawable.ic_check
+                        "failed" -> R.drawable.ic_x
+                        "skipped" -> R.drawable.ic_minus
+                        else -> R.drawable.ic_chevron_right
+                    },
                 ),
                 contentDescription = when (current) {
                     "done" -> "Saved"
                     "failed" -> "Failed"
-                    else -> "Skipped or stopped"
+                    "skipped" -> "Skipped"
+                    "pending" -> "Pending"
+                    else -> "Waiting"
                 },
-                tint = if (current == "failed") colors.error else if (current == "done") colors.tertiary else colors.onSurfaceVariant,
+                tint = when (current) {
+                    "failed" -> colors.error
+                    "done" -> colors.tertiary
+                    "skipped" -> colors.onSurfaceVariant
+                    else -> colors.onSurfaceVariant
+                },
                 modifier = Modifier.size(18.dp),
             )
         }

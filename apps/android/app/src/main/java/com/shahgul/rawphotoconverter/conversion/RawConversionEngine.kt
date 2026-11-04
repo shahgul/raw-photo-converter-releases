@@ -1,7 +1,6 @@
 package com.shahgul.rawphotoconverter.conversion
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -37,9 +36,9 @@ class RawConversionEngine(private val context: Context) {
         phase: (String) -> Unit,
     ): ConversionResult {
         cancellation.check()
-        val name = ConversionPolicy.outputName(input.label, recipe.format)
-        fun existingFile() = folder.listFiles().firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
-        existingFile()?.let { return skippedExisting(input, it, recipe) }
+        val name = ConversionPolicy.outputName(input.label, recipe)
+        fun existing() = folder.listFiles().any { it.name?.equals(name, ignoreCase = true) == true }
+        if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString(), format = recipe.format, colorGamut = recipe.colorGamut)
         check(folder.isDirectory && folder.canWrite()) { "The output folder is not writable. Select it again." }
         val work = File(context.cacheDir, "raw-conversion-${UUID.randomUUID()}")
         check(work.mkdir()) { "Unable to create temporary conversion storage." }
@@ -109,7 +108,7 @@ class RawConversionEngine(private val context: Context) {
             cancellation.check()
             phase("Saving ${recipe.format.label}")
             // Check again after development: never open an existing document for write.
-            existingFile()?.let { return skippedExisting(input, it, recipe) }
+            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString(), format = recipe.format, colorGamut = recipe.colorGamut)
             val stagingName = ".raw-photo-converter-${UUID.randomUUID()}.pending.${recipe.format.extension}"
             output = folder.createFile(recipe.format.mimeType, stagingName) ?: error("The output provider could not create a temporary ${recipe.format.label}.")
             val document = output
@@ -147,7 +146,7 @@ class RawConversionEngine(private val context: Context) {
             } ?: error("The saved ${recipe.format.label} could not be verified.")
             check(bytes == choice.bytes) { "The output provider saved an incomplete ${recipe.format.label}." }
             cancellation.check()
-            existingFile()?.let { return skippedExisting(input, it, recipe) }
+            if (existing()) return ConversionResult(input.label, skipped = true, sourceUri = input.uri.toString(), format = recipe.format, colorGamut = recipe.colorGamut)
             check(document.renameTo(name)) { "The output provider cannot finalize filenames. Choose another output folder." }
             check(document.name == name) { "The output provider changed the final filename. No ${recipe.format.label} was saved." }
             saved = true
@@ -178,28 +177,6 @@ class RawConversionEngine(private val context: Context) {
                 context.getSharedPreferences("conversion", Context.MODE_PRIVATE).edit().remove("pendingOutput").commit()
             }
         }
-    }
-
-    /** Existing output stays untouched. Bounds and size are read so results can describe that file. */
-    private fun skippedExisting(input: RawInput, file: DocumentFile, recipe: ConversionRecipe): ConversionResult {
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        runCatching {
-            context.contentResolver.openInputStream(file.uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, options)
-            }
-        }
-        return ConversionResult(
-            source = input.label,
-            output = file.uri,
-            sizeBytes = file.length().takeIf { it > 0 },
-            width = options.outWidth.takeIf { it > 0 },
-            height = options.outHeight.takeIf { it > 0 },
-            skipped = true,
-            cameraLook = recipe.mode == ConversionMode.CAMERA_LOOK,
-            sourceUri = input.uri.toString(),
-            format = recipe.format,
-            colorGamut = recipe.colorGamut,
-        )
     }
 
     fun cleanInterruptedTemps() {

@@ -63,10 +63,39 @@ class ConversionPolicyTest {
         assertEquals(65535, ColorGamut.DISPLAY_P3.exifColorSpace)
     }
 
-    @Test fun unsupportedSelectionMessageExplainsNonRawFormats() {
-        assertTrue(ConversionPolicy.unsupportedSelectionMessage("holiday.jpg").contains("not a RAW"))
-        assertTrue(ConversionPolicy.unsupportedSelectionMessage("scan.HEIC").contains("regular photo"))
-        assertTrue(ConversionPolicy.unsupportedSelectionMessage("notes.txt").contains("not supported"))
+    @Test fun filenameTemplatesRenderStemTokensWithoutPathCharacters() {
+        assertEquals(
+            "DSC0001_4000.jpg",
+            ConversionPolicy.outputName(
+                "DSC0001.ARW",
+                ConversionRecipe(nameTemplate = "{name}_{edge}", maxLongEdge = 4000),
+            ),
+        )
+        assertEquals(
+            "DSC0001_original.webp",
+            ConversionPolicy.outputName(
+                "DSC0001.ARW",
+                ConversionRecipe(
+                    nameTemplate = "{name}_{edge}",
+                    maxLongEdge = 0,
+                    format = OutputFormat.WEBP,
+                ),
+            ),
+        )
+        assertEquals(
+            "DSC0001_camera.jpg",
+            ConversionPolicy.outputName(
+                "DSC0001.ARW",
+                ConversionRecipe(nameTemplate = "{name}_{mode}", mode = ConversionMode.CAMERA_LOOK),
+            ),
+        )
+        assertEquals(
+            "evil_DSC0001",
+            ConversionPolicy.outputStem("DSC0001.ARW", template = "evil/{name}"),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            ConversionRecipe(nameTemplate = "   ")
+        }
     }
 
     @Test fun sonyArwNamesAreRawEvenWhenTheProviderOmitsMime() {

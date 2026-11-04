@@ -28,19 +28,9 @@ fun incomingSharedContent(intent: Intent): SharedContentRequest? {
         val distinct = candidates.distinct()
         val accepted = distinct.filter { it.scheme == "content" && !it.authority.isNullOrBlank() }
         val rejected = distinct.size - accepted.size
-        val mimeHint = intent.type?.lowercase(java.util.Locale.ROOT).orEmpty()
-        val looksLikeRegularPhoto = mimeHint.startsWith("image/") &&
-            !mimeHint.contains("arw") && !mimeHint.contains("cr2") && !mimeHint.contains("cr3") &&
-            mimeHint != "application/octet-stream"
         val message = when {
-            accepted.isEmpty() -> when {
-                looksLikeRegularPhoto ->
-                    "That share looks like a regular photo (JPEG/PNG/HEIC), not a RAW file. Share Sony ARW or Canon CR2/CR3, or pick RAWs with Add photos."
-                else -> "No readable content files were shared. Share RAW files, or use Folder to choose a directory."
-            }
+            accepted.isEmpty() -> "No readable content files were shared. Share RAW files, or use Folder to choose a directory."
             rejected > 0 -> "$rejected shared item(s) use unsupported links or file paths and weren't added. Use the Folder picker for directories without shared access."
-            looksLikeRegularPhoto && accepted.isNotEmpty() ->
-                "Check that shared files are Sony ARW or Canon CR2/CR3 — regular JPEGs cannot be developed here."
             else -> null
         }
         SharedContentRequest(UUID.randomUUID().toString(), accepted, message)

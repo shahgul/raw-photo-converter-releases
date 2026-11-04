@@ -2,11 +2,8 @@
 package com.shahgul.rawphotoconverter.ui
 
 import android.content.Context
-import android.media.AudioManager
-import android.media.ToneGenerator
+import android.media.RingtoneManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -23,7 +20,7 @@ object CompletionFeedback {
             triggerHaptic(context, hasFailures)
         }
         if (soundEnabled) {
-            triggerSound(context, hasFailures)
+            triggerSound(context)
         }
     }
 
@@ -54,25 +51,11 @@ object CompletionFeedback {
         }
     }
 
-    /**
-     * Soft sonification on the media stream. ToneGenerator plays asynchronously, so the
-     * generator has to stay alive until the tone finishes — releasing it immediately is silent.
-     */
-    private fun triggerSound(context: Context, hasFailures: Boolean) {
+    private fun triggerSound(context: Context) {
         try {
-            val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val mediaAudible = audio?.getStreamVolume(AudioManager.STREAM_MUSIC)?.let { it > 0 } != false
-            val stream = if (mediaAudible) AudioManager.STREAM_MUSIC else AudioManager.STREAM_SYSTEM
-            val durationMs = if (hasFailures) 220 else 180
-            val tone = if (hasFailures) ToneGenerator.TONE_PROP_NACK else ToneGenerator.TONE_PROP_ACK
-            val generator = ToneGenerator(stream, if (hasFailures) 55 else 48)
-            if (!generator.startTone(tone, durationMs)) {
-                generator.release()
-                return
-            }
-            Handler(Looper.getMainLooper()).postDelayed({
-                runCatching { generator.release() }
-            }, durationMs + 80L)
+            val alert = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val ringtone = RingtoneManager.getRingtone(context, alert)
+            ringtone?.play()
         } catch (error: Exception) {
             Log.w("CompletionFeedback", "Audio feedback unavailable or muted", error)
         }

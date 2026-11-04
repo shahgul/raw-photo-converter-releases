@@ -24,9 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +42,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shahgul.rawphotoconverter.conversion.BatchState
 import com.shahgul.rawphotoconverter.conversion.ConversionResult
@@ -83,23 +82,9 @@ internal fun ResultsScreen(
     val settleDelay = motionMillis(40).toLong()
     var settled by remember { mutableStateOf(false) }
     val failedCount = batch.results.count { it.error != null }
+    val savedCount = batch.results.count { it.output != null }
     val skippedCount = batch.results.count { it.skipped }
-    val savedCount = batch.results.count { it.error == null && !it.skipped && it.output != null }
-    val measuredBytes = batch.results.mapNotNull { result ->
-        if (result.error == null) result.sizeBytes else null
-    }
-    val many = batch.results.size > 1
     val shareableCount = savedJpegUris(batch.results).size
-    val summaryResult = when (batch.results.size) {
-        0 -> null
-        1 -> batch.results.first()
-        else -> batch.results.lastOrNull { it.output != null } ?: batch.results.last()
-    }
-    val batchElapsedMs = if (batch.startedAtMs > 0 && batch.finishedAtMs != null) {
-        (batch.finishedAtMs - batch.startedAtMs).coerceAtLeast(0)
-    } else {
-        null
-    }
     LaunchedEffect(batch.finishedAtMs, batch.results.size) {
         settled = false
         if (batch.finishedAtMs != null && batch.results.isNotEmpty()) {
@@ -113,11 +98,11 @@ internal fun ResultsScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Adjust recipe")
+                        Text("Back to setup")
                     }
                     Spacer(Modifier.weight(1f))
                     if (batch.running) {
@@ -154,31 +139,10 @@ internal fun ResultsScreen(
                                     color = colors.primary,
                                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                                 )
-                                batch.sourceLabel?.let { label ->
-                                    Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                }
                                 Text(
-                                    if (many) {
-                                        "${batch.results.size} photos · $savedCount saved · $skippedCount skipped · $failedCount failed"
-                                    } else {
-                                        "$savedCount saved · $skippedCount skipped · $failedCount failed"
-                                    },
+                                    "$savedCount saved · $skippedCount skipped · $failedCount failed",
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
-                                if (many && measuredBytes.isNotEmpty()) {
-                                    Text(
-                                        "${formatSize(measuredBytes.sum())} across ${measuredBytes.size} output files",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.onSurfaceVariant,
-                                    )
-                                }
-                                batchElapsedMs?.let { elapsed ->
-                                    Text(
-                                        "Finished in ${formatElapsed(elapsed)}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.onSurfaceVariant,
-                                    )
-                                }
                                 batch.settings?.let { settings ->
                                     Text(
                                         "${modeLabel(settings.mode)} / ${resolutionLabel(settings.resolution)}",
@@ -200,32 +164,6 @@ internal fun ResultsScreen(
                                         Text("Retry failed files")
                                     }
                                 }
-                                if (!many) summaryResult?.let { result ->
-                                    Text(
-                                        result.source,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    ResultFacts(result)
-                                    result.output?.let { uri ->
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            FilledTonalButton(
-                                                onClick = { onOpenJpeg(uri) },
-                                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                                shape = shapes.medium,
-                                            ) {
-                                                Text(if (result.skipped) "Open existing" else "Open JPEG")
-                                            }
-                                            OutlinedButton(
-                                                onClick = { onShareJpeg(uri) },
-                                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                                shape = shapes.medium,
-                                            ) {
-                                                Text("Share")
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -237,6 +175,14 @@ internal fun ResultsScreen(
                     batch.message?.let {
                         item {
                             Text(it, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (savedCount > 0) {
+                        item {
+                            SavedResultThumbnailStrip(
+                                results = batch.results,
+                                onOpen = onOpenJpeg,
+                            )
                         }
                     }
                     if (shareableCount > 0) {
@@ -273,10 +219,7 @@ internal fun ResultsScreen(
                             }
                         }
                     }
-                    items(
-                        if (batch.results.size == 1) emptyList() else batch.results,
-                        key = { "${it.source}:${it.output}:${it.error}:${it.skipped}" },
-                    ) { result ->
+                    items(batch.results, key = { "${it.source}:${it.output}:${it.error}:${it.skipped}" }) { result ->
                         ResultRow(
                             result = result,
                             onOpenJpeg = onOpenJpeg,
@@ -296,9 +239,13 @@ internal fun ResultsScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 24.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val latestUri = batch.results.lastOrNull { it.output != null }?.output
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             TextButton(
                                 onClick = {
                                     context.getSystemService(ClipboardManager::class.java)
@@ -306,17 +253,20 @@ internal fun ResultsScreen(
                                 },
                                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                             ) { Text("Copy report") }
-                            batch.results.lastOrNull { it.output != null }?.output?.let { uri ->
+                            if (latestUri != null) {
                                 TextButton(
-                                    onClick = { onOpenJpeg(uri) },
+                                    onClick = { onOpenJpeg(latestUri) },
                                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                ) { Text("Open latest JPEG") }
+                                ) { Text("Open latest") }
                             }
-                        }
-                        if (shareableCount > 1) {
-                            TextButton(onClick = onShareAll, enabled = !batch.running && !sharing,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                Text(if (sharing) "Preparing JPEGs…" else "Share $shareableCount JPEGs")
+                            if (shareableCount > 1) {
+                                TextButton(
+                                    onClick = onShareAll,
+                                    enabled = !batch.running && !sharing,
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                ) {
+                                    Text(if (sharing) "Preparing JPEGs…" else "Share $shareableCount JPEGs")
+                                }
                             }
                         }
                         Button(
@@ -339,11 +289,15 @@ internal fun ResultsScreen(
 
 @Composable
 private fun ExportOptionsSection(options: ExportOptions, onChange: (ExportOptions) -> Unit, enabled: Boolean) {
-    var expanded by rememberSaveable { mutableStateOf(true) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
         TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            contentPadding = PaddingValues(0.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text("Export options", style = MaterialTheme.typography.titleMedium)
                 Text(if (expanded) "Hide" else "Show", style = MaterialTheme.typography.labelLarge)
             }
@@ -374,29 +328,6 @@ private fun ExportOptionsSection(options: ExportOptions, onChange: (ExportOption
 }
 
 @Composable
-private fun ResultFacts(result: ConversionResult) {
-    val colors = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        resultFacts(result).forEach { (label, value) ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    label,
-                    modifier = Modifier.weight(0.38f),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                )
-                Text(
-                    value,
-                    modifier = Modifier.weight(0.62f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (label == "Error") colors.error else colors.onSurface,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ResultRow(
     result: ConversionResult,
     onOpenJpeg: (Uri) -> Unit,
@@ -409,8 +340,9 @@ private fun ResultRow(
     val shapes = MaterialTheme.shapes
     val mark = when {
         result.error != null -> "failed"
-        result.skipped -> "pending"
-        else -> "done"
+        result.skipped -> "skipped"
+        result.output != null -> "done"
+        else -> "pending"
     }
     Surface(
         color = colors.surfaceContainer,
@@ -420,16 +352,41 @@ private fun ResultRow(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                StatusMark(mark)
-                Text(result.source, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                if (result.output != null && result.error == null && !result.skipped) {
+                    ResultRowThumb(result.output)
+                } else {
+                    StatusMark(mark)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (result.output != null && result.error == null && !result.skipped) {
+                            StatusMark(mark)
+                        }
+                        Text(
+                            result.source,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                    Text(
+                        resultDescription(result),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (result.error != null) colors.error else colors.onSurfaceVariant,
+                    )
+                }
             }
-            ResultFacts(result)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 result.output?.let { uri ->
                     TextButton(onClick = { onOpenJpeg(uri) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                        Text(if (result.skipped) "Open existing" else "Open JPEG")
+                        Text("Open")
                     }
                     TextButton(onClick = { onShareJpeg(uri) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                         Text("Share")

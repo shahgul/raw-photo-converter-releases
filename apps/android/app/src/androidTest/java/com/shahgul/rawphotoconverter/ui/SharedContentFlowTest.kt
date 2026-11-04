@@ -152,6 +152,7 @@ class SharedContentFlowTest {
             compose.activity.deliverShowProcessingRequest()
         }
         awaitText("Share 2 JPEGs")
+        compose.onNodeWithText("Export options").performScrollTo().performClick()
         compose.onNodeWithText("Remove EXIF metadata").performScrollTo().performClick().assertIsOn()
         compose.onNodeWithText("Export options").performClick()
         compose.onNodeWithText("Remove EXIF metadata").assertDoesNotExist()

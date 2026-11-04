@@ -33,11 +33,14 @@ data class ConversionRecipe(
     val mode: ConversionMode = ConversionMode.DEVELOP_RAW,
     val format: OutputFormat = OutputFormat.JPEG,
     val colorGamut: ColorGamut = ColorGamut.SRGB,
+    /** Stem template before the format extension. Tokens: {name}, {edge}, {mode}. */
+    val nameTemplate: String = "{name}",
 ) {
     init {
         require(targetBytes > 0)
         require(maxLongEdge == 0 || maxLongEdge in 256..8000)
         require(minQuality in 1..100 && maxQuality in minQuality..100)
+        require(nameTemplate.isNotBlank()) { "Filename template cannot be blank." }
     }
 }
 
@@ -87,25 +90,42 @@ object ConversionPolicy {
         error("Invalid quality range")
     }
 
-    fun outputName(source: String, format: OutputFormat = OutputFormat.JPEG): String {
+    fun outputStem(
+        source: String,
+        template: String = "{name}",
+        maxLongEdge: Int = 4000,
+        mode: ConversionMode = ConversionMode.DEVELOP_RAW,
+    ): String {
         require(isSupportedRaw(source)) { "Select a supported RAW file (.ARW, .CR2 or .CR3)." }
-        val stem = source.substringBeforeLast('.')
-        require(stem.isNotBlank() && '/' !in stem && '\\' !in stem) { "Invalid RAW filename." }
-        return "$stem.${format.extension}"
+        val name = source.substringBeforeLast('.')
+        require(name.isNotBlank() && '/' !in name && '\\' !in name) { "Invalid RAW filename." }
+        val edge = if (maxLongEdge == 0) "original" else maxLongEdge.toString()
+        val modeToken = when (mode) {
+            ConversionMode.DEVELOP_RAW -> "develop"
+            ConversionMode.CAMERA_LOOK -> "camera"
+        }
+        val rendered = template
+            .replace("{name}", name)
+            .replace("{edge}", edge)
+            .replace("{mode}", modeToken)
+            .replace(Regex("""[\\/:*?"<>|]"""), "_")
+            .trim()
+            .trim('.')
+        require(rendered.isNotBlank()) { "Filename template produced an empty name." }
+        require('/' !in rendered && '\\' !in rendered) { "Filename template cannot include path separators." }
+        return rendered
     }
+
+    fun outputName(
+        source: String,
+        format: OutputFormat = OutputFormat.JPEG,
+        template: String = "{name}",
+        maxLongEdge: Int = 4000,
+        mode: ConversionMode = ConversionMode.DEVELOP_RAW,
+    ): String = "${outputStem(source, template, maxLongEdge, mode)}.${format.extension}"
+
+    fun outputName(source: String, recipe: ConversionRecipe): String =
+        outputName(source, recipe.format, recipe.nameTemplate, recipe.maxLongEdge, recipe.mode)
 
     fun jpegName(source: String): String = outputName(source, OutputFormat.JPEG)
-
-    /** User-facing explanation when a picked or shared file is not a supported RAW. */
-    fun unsupportedSelectionMessage(label: String): String {
-        val extension = label.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
-        return when (extension) {
-            "jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff" ->
-                "$label is a regular photo, not a RAW file. Add Sony ARW or Canon CR2/CR3 to convert."
-            "" ->
-                "$label is not a supported RAW file. Use Sony ARW or Canon CR2/CR3."
-            else ->
-                "$label is not supported. This app converts Sony ARW and Canon CR2/CR3 only."
-        }
-    }
 }

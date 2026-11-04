@@ -52,9 +52,6 @@ enum class HistogramMode { RGB, LUMA }
 @Composable
 fun HistogramCard(
     previewBitmap: Bitmap?,
-    expanded: Boolean = false,
-    onExpandedChange: ((Boolean) -> Unit)? = null,
-    showHeader: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     if (previewBitmap == null) return
@@ -62,13 +59,7 @@ fun HistogramCard(
     val colors = MaterialTheme.colorScheme
     val shapes = MaterialTheme.shapes
 
-    var internalExpanded by rememberSaveable { mutableStateOf(false) }
-    val isExpanded = if (onExpandedChange != null) expanded else internalExpanded
-    fun setExpanded(value: Boolean) {
-        if (onExpandedChange != null) onExpandedChange(value)
-        else internalExpanded = value
-    }
-
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf(HistogramMode.RGB) }
     var histogramData by remember(previewBitmap) { mutableStateOf<HistogramData?>(null) }
     var computing by remember(previewBitmap) { mutableStateOf(false) }
@@ -80,47 +71,45 @@ fun HistogramCard(
     }
 
     Column(modifier = modifier) {
-        if (showHeader) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = { expanded = !expanded },
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.height(44.dp),
             ) {
-                TextButton(
-                    onClick = { setExpanded(!isExpanded) },
-                    contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.height(44.dp),
-                ) {
-                    Text(
-                        if (isExpanded) "Hide histogram" else "Exposure histogram",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.primary,
-                    )
-                }
+                Text(
+                    if (expanded) "Hide histogram" else "Exposure histogram",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.primary,
+                )
+            }
 
-                if (isExpanded && histogramData != null) {
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.width(130.dp)) {
-                        SegmentedButton(
-                            selected = mode == HistogramMode.RGB,
-                            onClick = { mode = HistogramMode.RGB },
-                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                            label = { Text("RGB", style = MaterialTheme.typography.labelSmall) },
-                        )
-                        SegmentedButton(
-                            selected = mode == HistogramMode.LUMA,
-                            onClick = { mode = HistogramMode.LUMA },
-                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                            label = { Text("Luma", style = MaterialTheme.typography.labelSmall) },
-                        )
-                    }
+            if (expanded && histogramData != null) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.width(130.dp)) {
+                    SegmentedButton(
+                        selected = mode == HistogramMode.RGB,
+                        onClick = { mode = HistogramMode.RGB },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        label = { Text("RGB", style = MaterialTheme.typography.labelSmall) },
+                    )
+                    SegmentedButton(
+                        selected = mode == HistogramMode.LUMA,
+                        onClick = { mode = HistogramMode.LUMA },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        label = { Text("Luma", style = MaterialTheme.typography.labelSmall) },
+                    )
                 }
             }
         }
 
         AnimatedVisibility(
-            visible = isExpanded,
+            visible = expanded,
             enter = fadeIn(motionTween(180)),
             exit = fadeOut(motionTween(140)),
         ) {
@@ -137,38 +126,6 @@ fun HistogramCard(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (!showHeader) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "Exposure distribution",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = colors.onSurfaceVariant,
-                            )
-                            if (histogramData != null) {
-                                SingleChoiceSegmentedButtonRow(modifier = Modifier.width(130.dp)) {
-                                    SegmentedButton(
-                                        selected = mode == HistogramMode.RGB,
-                                        onClick = { mode = HistogramMode.RGB },
-                                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                        label = { Text("RGB", style = MaterialTheme.typography.labelSmall) },
-                                    )
-                                    SegmentedButton(
-                                        selected = mode == HistogramMode.LUMA,
-                                        onClick = { mode = HistogramMode.LUMA },
-                                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                        label = { Text("Luma", style = MaterialTheme.typography.labelSmall) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                     if (computing || histogramData == null) {
                         Box(
                             modifier = Modifier

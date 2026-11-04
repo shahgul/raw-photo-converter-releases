@@ -37,6 +37,7 @@ data class BatchSettings(
     val outputUri: String? = null,
     val format: OutputFormat = OutputFormat.JPEG,
     val colorGamut: ColorGamut = ColorGamut.SRGB,
+    val nameTemplate: String = "{name}",
 )
 data class BatchEvent(val elapsedMs: Long, val message: String)
 
@@ -292,6 +293,7 @@ class ConversionService : Service() {
                         outputUri = outputUri.toString(),
                         format = format,
                         colorGamut = colorGamut,
+                        nameTemplate = intent.getStringExtra(NAME_TEMPLATE) ?: "{name}",
                     )
                 }
                 state = state.copy(total = inputs.size, settings = batchSettings)
@@ -302,6 +304,7 @@ class ConversionService : Service() {
                     maxLongEdge = batchSettings.resolution.maxEdge,
                     format = batchSettings.format,
                     colorGamut = batchSettings.colorGamut,
+                    nameTemplate = batchSettings.nameTemplate,
                 )
                 for (input in inputs) {
                     token.check()
@@ -424,6 +427,7 @@ class ConversionService : Service() {
         private const val METADATA = "metadata"
         private const val FORMAT = "format"
         private const val COLOR_GAMUT = "color_gamut"
+        private const val NAME_TEMPLATE = "name_template"
 
         fun start(
             context: Context,
@@ -436,12 +440,14 @@ class ConversionService : Service() {
             resolution: OutputResolution = OutputResolution.STANDARD,
             format: OutputFormat = OutputFormat.JPEG,
             colorGamut: ColorGamut = ColorGamut.SRGB,
+            nameTemplate: String = "{name}",
         ) {
             ContextCompat.startForegroundService(context, Intent(context, ConversionService::class.java)
                 .putExtra(SOURCE, source.toString()).putExtra(LABEL, label).putExtra(FOLDER, isFolder)
                 .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
                 .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name)
-                .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name))
+                .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name)
+                .putExtra(NAME_TEMPLATE, nameTemplate))
         }
 
         fun startPhotos(
@@ -453,6 +459,7 @@ class ConversionService : Service() {
             resolution: OutputResolution = OutputResolution.STANDARD,
             format: OutputFormat = OutputFormat.JPEG,
             colorGamut: ColorGamut = ColorGamut.SRGB,
+            nameTemplate: String = "{name}",
         ) {
             // Keep the queue in the process, like retry requests. Large selections must
             // not put thousands of URIs into Binder extras. Process death never restarts a batch.
@@ -462,7 +469,8 @@ class ConversionService : Service() {
                     .setAction(SELECTED_PHOTOS).putExtra(LABEL, "${request.size} selected photos")
                     .putExtra(OUTPUT, output.toString()).putExtra(METADATA, metadata)
                     .putExtra(MODE, mode.name).putExtra(RESOLUTION, resolution.name)
-                    .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name))
+                    .putExtra(FORMAT, format.name).putExtra(COLOR_GAMUT, colorGamut.name)
+                    .putExtra(NAME_TEMPLATE, nameTemplate))
             } catch (failure: Exception) {
                 ConversionStore.discardPhotoRequest(request)
                 throw failure

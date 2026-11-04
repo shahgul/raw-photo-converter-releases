@@ -19,7 +19,12 @@ android {
         versionCode = releaseVersionCode
         versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // Pass -PabiFilters=arm64-v8a for device-only installs on low-RAM hosts.
+        val abis = providers.gradleProperty("abiFilters")
+            .map { value -> value.split(',').map(String::trim).filter(String::isNotEmpty) }
+            .orElse(listOf("arm64-v8a", "x86_64"))
+            .get()
+        ndk { abiFilters += abis }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }
 

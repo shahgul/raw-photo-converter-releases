@@ -35,6 +35,7 @@ sealed interface RawSourceSummary {
         val sizeBytes: Long?,
         val metadata: RawMetadata,
         val preview: RawPreviewState = RawPreviewState.Loading,
+        val developedPreview: DevelopedPreviewState = DevelopedPreviewState.Idle,
     ) : RawSourceSummary
 
     data class Folder(
@@ -57,6 +58,14 @@ sealed interface RawPreviewState {
     data object Loading : RawPreviewState
     data class Ready(val bitmap: Bitmap) : RawPreviewState
     data class Unavailable(val message: String) : RawPreviewState
+}
+
+/** Opt-in LibRaw develop used only for the before/after compare slider — never invents pixels. */
+sealed interface DevelopedPreviewState {
+    data object Idle : DevelopedPreviewState
+    data object Loading : DevelopedPreviewState
+    data class Ready(val bitmap: Bitmap) : DevelopedPreviewState
+    data class Failed(val message: String) : DevelopedPreviewState
 }
 
 data class RawMetadata(
@@ -125,10 +134,6 @@ class RawSourceRepository(private val context: Context) {
             try {
                 val (name, size) = queryNameAndSize(uri)
                 val label = name ?: error("The provider did not supply a filename.")
-                if (!ConversionPolicy.isSupportedRaw(label)) {
-                    failures += ConversionPolicy.unsupportedSelectionMessage(label)
-                    continue
-                }
                 ConversionPolicy.jpegName(label)
                 resolver.openFileDescriptor(uri, "r")?.use { } ?: error("$label cannot be read. Select it again.")
                 photos += SelectedRaw(uri, label, size)
@@ -153,7 +158,6 @@ class RawSourceRepository(private val context: Context) {
     suspend fun inspectRaw(uri: Uri): RawSourceSummary.Single = withContext(Dispatchers.IO) {
         val (name, size) = queryNameAndSize(uri)
         val rawName = name ?: error("The selected provider did not supply a filename.")
-        require(ConversionPolicy.isSupportedRaw(rawName)) { ConversionPolicy.unsupportedSelectionMessage(rawName) }
         ConversionPolicy.jpegName(rawName)
         val metadata = resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
             try {
@@ -241,6 +245,64 @@ class RawSourceRepository(private val context: Context) {
                     else -> "The camera preview couldn't be read. Develop RAW is still available."
                 },
             )
+        } finally {
+            cancellationHandle.dispose()
+            stagedRaw?.delete()
+        }
+    }
+
+    /**
+     * Develops a bounded preview from sensor data for compare UI.
+     * Max long edge stays modest so Setup stays responsive on phones.
+     */
+    suspend fun loadDevelopedPreview(
+        uri: Uri,
+        sizeBytes: Long?,
+        maxLongEdge: Int = 1200,
+    ): DevelopedPreviewState = withContext(Dispatchers.IO) {
+        if (sizeBytes != null && sizeBytes > 512L * 1024 * 1024) {
+            return@withContext DevelopedPreviewState.Failed(
+                "This RAW exceeds the app's 512 MiB input limit.",
+            )
+        }
+        val coroutine = currentCoroutineContext()
+        val cancellation = ConversionCancellation()
+        val cancellationHandle = coroutine.job.invokeOnCompletion { cause ->
+            if (cause != null) cancellation.cancelled = true
+        }
+        var stagedRaw: File? = null
+        try {
+            coroutine.ensureActive()
+            val raw = File.createTempFile("raw-develop-${UUID.randomUUID()}-", ".cr3", context.cacheDir)
+            stagedRaw = raw
+            resolver.openInputStream(uri)?.use { input ->
+                raw.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var totalBytes = 0L
+                    while (true) {
+                        coroutine.ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        totalBytes += count
+                        check(totalBytes <= 512L * 1024 * 1024) {
+                            "This RAW exceeds the app's 512 MiB input limit."
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            } ?: error("The selected file provider did not open the RAW for develop preview.")
+            check(raw.length() > 0) { "The selected RAW is empty." }
+            coroutine.ensureActive()
+            val bitmap = NativeRawDecoder.decode(raw.absolutePath, maxLongEdge, cancellation)
+            coroutine.ensureActive()
+            DevelopedPreviewState.Ready(bitmap)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unavailable: UnsatisfiedLinkError) {
+            DevelopedPreviewState.Failed("Develop preview isn't available on this build.")
+        } catch (failure: Exception) {
+            Log.w("RawSource", "Develop preview failed (${failure.javaClass.simpleName}): ${failure.message}", failure)
+            DevelopedPreviewState.Failed(failure.message ?: "Develop preview failed.")
         } finally {
             cancellationHandle.dispose()
             stagedRaw?.delete()
