@@ -6,7 +6,7 @@ This is not a Tauri port. It uses native Android storage, lifecycle, Compose UI,
 
 See the [Android screenshot gallery](../../README.md#android-screenshots) for real app screens. Screenshots must be reviewed and refreshed whenever Android changes affect the depicted UI or workflow; see [AGENTS.md](../../AGENTS.md#android-screenshot-maintenance).
 
-Gallery screens 01–06 were refreshed on a Motorola Edge 50 Pro from signed 0.0.21-alpha (Add photos, single preview, Compare Develop, photo details, multi-photo queue, batch settings). Processing and Results still use earlier phone captures and do not yet show result thumbnails; re-capture those after device unlock.
+Gallery screens 01–08 were captured on a Motorola Edge 50 Pro from signed 0.0.21-alpha (Add photos, single preview, Compare Develop, photo details, multi-photo queue, batch settings, processing, results with thumbnails).
 
 The 0.0.21-alpha release adds 100% loupe, Camera JPEG vs Develop RAW compare split, filename templates, honest batch ETA, real Results thumbnails, and matching Step 1/Step 2 cards on top of 0.0.12–0.0.20 input/output, format/P3/histogram, and progress polish.
 

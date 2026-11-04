@@ -6,7 +6,7 @@ A local-first Android RAW converter for Sony ARW and Canon CR2/CR3 files.
 
 **Android 0.0.21-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.21-alpha).
 
-This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. The Android implementation and signed APK are pinned to private commit `90222b66a3997daa59b9c5d179d991fe0c49c60b`. This public snapshot (including refreshed screenshots) is pinned to private commit `7df638d6eb2e5a8ceea9b5cab5c2ceb9b9b59378`. Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
+This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. The Android implementation and signed APK are pinned to private commit `90222b66a3997daa59b9c5d179d991fe0c49c60b`. This public snapshot (including the full 0.0.21 screenshot gallery) is pinned to private commit `c541312cddbd1d5f4492f7780635d819f475e7b0`. Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
 
 **Supported:** Sony ARW and Canon CR2/CR3 RAW files on Android 8.0+ (arm64). Other camera formats (Nikon, Fujifilm, etc.) are not supported yet. This is an alpha: expect rough edges and please report them (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
@@ -14,7 +14,7 @@ This repository is a curated public source snapshot. Development remains in the 
 
 ## Android app screenshots
 
-Authentic captures from a Motorola Edge 50 Pro (Android 17) running signed **0.0.21-alpha**, except processing and results (see note).
+Authentic captures from a Motorola Edge 50 Pro (Android 17) running signed **0.0.21-alpha**.
 
 | 01 · Add photos | 02 · Single-photo preview | 03 · Compare Develop |
 |:---:|:---:|:---:|
@@ -22,9 +22,9 @@ Authentic captures from a Motorola Edge 50 Pro (Android 17) running signed **0.0
 | **04 · Photo details** | **05 · Selected-photo queue** | **06 · Batch settings** |
 | <img src="docs/screenshots/android-photo-details.png" width="230" alt="Expanded EXIF photo details under compare preview" /> | <img src="docs/screenshots/android-multi-photo-queue.png" width="230" alt="Two selected Sony RAW photos with remove actions" /> | <img src="docs/screenshots/android-batch-settings.png" width="230" alt="Recipe with format, gamut, templates, and metadata toggles" /> |
 | **07 · Processing** | **08 · Results** | |
-| <img src="docs/screenshots/Screenshot_20261010_192007_Raw Photo Converter.jpg" width="230" alt="Processing screen from an earlier phone build" /> | <img src="docs/screenshots/Screenshot_20261010_191959_Raw Photo Converter.jpg" width="230" alt="Results screen from an earlier phone build" /> | |
+| <img src="docs/screenshots/android-processing.png" width="230" alt="Processing screen developing two Sony ARWs with ETA" /> | <img src="docs/screenshots/android-results.png" width="230" alt="Results with saved-frame thumbnails and per-file Open Share" /> | |
 
-Screens 01–06 were refreshed on 2026-11-04 from the signed 0.0.21-alpha install. **07 Processing and 08 Results are earlier phone captures** and do not show the current Results thumbnails/StatusMarks.
+All eight gallery screens were captured on 2026-11-04 from the signed 0.0.21-alpha install.
 
 Screenshot maintenance: Android UI/workflow changes must trigger a review of this gallery. See [AGENTS.md](AGENTS.md#android-screenshot-maintenance).
 
