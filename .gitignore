@@ -5,5 +5,15 @@ apps/android/local.properties
 apps/android/**/build/
 apps/android/**/.cxx/
 apps/android/**/.gradle/
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
+target/
 *.apk
 *.aab
+*.exe
+*.msi
+
+apps/desktop/dev-log.txt
+apps/desktop/tsconfig.tsbuildinfo
+

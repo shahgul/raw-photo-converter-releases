@@ -1,0 +1,14 @@
+[package]
+name = "raw-photo-converter-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rpc"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
+raw-photo-converter-core = { path = "../core" }

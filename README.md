@@ -1,16 +1,30 @@
 # Raw Photo Converter
 
-A local-first Android RAW converter for Sony ARW and Canon CR2/CR3 files.
+A local-first RAW converter for Sony ARW and Canon CR2/CR3 files — Windows desktop and Android.
 
-## Current public version
+## Current public versions
 
-**Android 0.0.22-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.22-alpha).
+**Windows 0.1.0-alpha** — [NSIS x64 installer and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/windows-v0.1.0-alpha) (**unsigned**; SmartScreen may warn). Pinned to private commit `764a4fbe8c5f01a1334c0305d298fe969a8bd382`.
 
-This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. The Android implementation and signed APK are pinned to private commit `444ece548a1a52b83cf6ef9be79b6ee8fc6b34b3` (`versionCode=1020`). Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
+**Android 0.0.22-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.22-alpha). Pinned to private commit `444ece548a1a52b83cf6ef9be79b6ee8fc6b34b3` (`versionCode=1020`).
 
-**Supported:** Sony ARW and Canon CR2/CR3 RAW files on Android 8.0+ (arm64). Other camera formats (Nikon, Fujifilm, etc.) are not supported yet. This is an alpha: expect rough edges and please report them (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. Private Git history is not mirrored. Binaries are distributed through GitHub Releases, not committed to the source tree.
 
-**Installing:** download the APK from the release, open it on your phone, and allow installs from your browser or file manager when asked. Android or Play Protect may warn about an app from outside the Play Store; the APK is signed with the project's stable key and its SHA-256 is listed below and in `SHA256SUMS.txt`. Installing over an earlier signed alpha updates it in place.
+**Supported:** Sony ARW and Canon CR2/CR3. Other camera formats (Nikon, Fujifilm, etc.) are not supported yet. This is alpha software: expect rough edges and please report them (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+### Windows install
+
+Download the NSIS x64 setup from the Windows release. The installer is **not Authenticode-signed** in this alpha — Windows SmartScreen / Defender may warn; verify the SHA-256 in `SHA256SUMS.txt` before installing. Conversion still needs local [darktable-cli, ImageMagick, and ExifTool](docs/WINDOWS-SETUP.md); the installer ships the app shell only.
+
+### Android install
+
+Download the APK from the Android release, open it on your phone, and allow installs from your browser or file manager when asked. The APK is signed with the project's stable key; SHA-256 is listed in the release `SHA256SUMS.txt`. Installing over an earlier signed alpha updates it in place.
+
+## Windows desktop
+
+Quiet Darkroom B2 shell (Tauri 2 + React): folder pick, Develop dock with live progress, Inspect with EXIF strip, hold-to-remove, rotate/compare, first-run dependency help, shared crop-frame icon. Processing stays local — no accounts, telemetry, or cloud upload.
+
+Installer SHA-256: `0d248aa85daf299b10df24221b06894ac615275dabb6a26265662f556cf9cea7`.
 
 ## Android app screenshots
 
@@ -26,7 +40,7 @@ Authentic captures from a Motorola Edge 50 Pro (Android 17). In-app gallery scre
 
 Screenshot maintenance: Android UI/workflow changes must trigger a review of this gallery. See [AGENTS.md](AGENTS.md#android-screenshot-maintenance).
 
-## What it does
+## What Android does
 
 - Select one or multiple RAW photos through Storage Access Framework, or process supported files directly inside a selected folder (nested subfolders are excluded). Photos can also be shared into the app.
 - Add more photos to the queue, ignore duplicate URIs, remove individual items, and retain the queue across activity recreation. One remaining photo shows the embedded camera preview, with histogram/EXIF details, 100% loupe, and an opt-in Camera JPEG vs Develop RAW compare split.
@@ -38,15 +52,13 @@ Screenshot maintenance: Android UI/workflow changes must trigger a review of thi
 
 Unsupported or unreadable picks are reported without discarding valid selections. Conversion and preview processing happen on-device without accounts, telemetry, or cloud upload.
 
-## Alpha validation
-
-The 0.0.22-alpha release was built, linted, unit-tested and signed locally by the maintainer (no GitHub Actions). Device smoke evidence from 0.0.21-alpha still applies: on a Motorola Edge 50 Pro (Android 17), a six-file Sony ARW folder batch completed with originals unchanged (debug tree), and Compare Develop was smoke-tested on `DSC00135.ARW`. This is device smoke evidence, not a formal multi-device validation. Canon CR2/CR3 and WebP/AVIF/Display P3 hardware paths remain pending.
-
-The APK SHA-256 is `6fc42fe7dbf0861ee450cb3cf9c6175eb9cbf19209664c57813b3a53756b48ac`. SHA256SUMS.txt covers both the APK and the exact LibRaw 0.22.2 source archive.
+Android APK SHA-256: `6fc42fe7dbf0861ee450cb3cf9c6175eb9cbf19209664c57813b3a53756b48ac`.
 
 ## Build
 
-Open `apps/android` in Android Studio. Install Android SDK Platform 37.0, NDK 30.0.16248370, and CMake 3.22.1. From that directory, run the Gradle wrapper for unit tests, lint, and APK assembly. The build downloads checksum-pinned LibRaw source; conversion itself is offline. APKs include arm64-v8a and x86_64; minSdk is 26.
+**Windows:** Rust stable + Node. From `apps/desktop`, `npm install` then `npm run tauri -- build`. NSIS output lands under `src-tauri/target/release/bundle/nsis/`. See [apps/desktop/PACKAGING.md](apps/desktop/PACKAGING.md) and [docs/WINDOWS-SETUP.md](docs/WINDOWS-SETUP.md).
+
+**Android:** Open `apps/android` in Android Studio. Install Android SDK Platform 37.0, NDK 30.0.16248370, and CMake 3.22.1. From that directory, run the Gradle wrapper for unit tests, lint, and APK assembly. The build downloads checksum-pinned LibRaw source; conversion itself is offline. APKs include arm64-v8a and x86_64; minSdk is 26.
 
 ## License and contributions
 

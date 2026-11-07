@@ -14,7 +14,7 @@ Rules for every coding agent:
 - Modify this public repository only when Shahgul explicitly asks to publish, sync, or prepare a public version.
 - Every public version must be pinned to an exact reviewed private commit/tag.
 - Never copy private Git history wholesale. Publish a curated source snapshot.
-- Never commit APK binaries into the source tree. Distribute signed APKs through GitHub Releases with checksums.
+- Never commit APK or Windows installer binaries into the source tree. Distribute release binaries through GitHub Releases with checksums.
 - Before publishing a newer snapshot, audit secrets, internal/private references, third-party licensing/attribution, and release notes.
 - If asked to continue, fix, implement, or start the next task while operating in this repository, stop and move the work to the development repository unless Shahgul explicitly says the public snapshot itself must be changed.
 
@@ -28,12 +28,12 @@ Rules for every coding agent:
 
 ## Current snapshot
 
-- Product: Raw Photo Converter for Android
-- Public version: 0.0.21-alpha
-- Private source commit (docs/screenshots snapshot): 7df638d6eb2e5a8ceea9b5cab5c2ceb9b9b59378
-- Android implementation and signed APK commit: 90222b66a3997daa59b9c5d179d991fe0c49c60b
+- Product: Raw Photo Converter (Windows desktop + Android)
+- Public Android version: 0.0.22-alpha (`versionCode=1020`), private pin `444ece548a1a52b83cf6ef9be79b6ee8fc6b34b3`
+- Public Windows version: 0.1.0-alpha (unsigned NSIS), private pin `764a4fbe8c5f01a1334c0305d298fe969a8bd382`
 - Project-owned code license: MPL-2.0; keep third-party notices separate
 - Publication model: explicit/manual only
+- Windows Authenticode signing is still outstanding; public Windows binaries must stay clearly labeled unsigned until a real certificate is used
 
 
 ## Local Android design and behavior rules
