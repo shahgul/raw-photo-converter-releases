@@ -1,0 +1,9 @@
+# Local Android SDK path (machine-specific)
+apps/android/local.properties
+
+# Build outputs
+apps/android/**/build/
+apps/android/**/.cxx/
+apps/android/**/.gradle/
+*.apk
+*.aab

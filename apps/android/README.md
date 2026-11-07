@@ -6,14 +6,14 @@ This is not a Tauri port. It uses native Android storage, lifecycle, Compose UI,
 
 See the [Android screenshot gallery](../../README.md#android-screenshots) for real app screens. Screenshots must be reviewed and refreshed whenever Android changes affect the depicted UI or workflow; see [AGENTS.md](../../AGENTS.md#android-screenshot-maintenance).
 
-Gallery screens 01–08 were captured on a Motorola Edge 50 Pro from signed 0.0.21-alpha (Add photos, single preview, Compare Develop, photo details, multi-photo queue, batch settings, processing, results with thumbnails).
+Gallery screens 01–08 were captured on a Motorola Edge 50 Pro from signed 0.0.21-alpha (Add photos, single preview, Compare Develop, photo details, multi-photo queue, batch settings, processing, results with thumbnails). 0.0.22-alpha keeps that in-app UI and ships the shared Quiet Darkroom crop-frame launcher icon.
 
-The 0.0.21-alpha release adds 100% loupe, Camera JPEG vs Develop RAW compare split, filename templates, honest batch ETA, real Results thumbnails, and matching Step 1/Step 2 cards on top of 0.0.12–0.0.20 input/output, format/P3/histogram, and progress polish.
+The 0.0.21/0.0.22 line adds 100% loupe, Camera JPEG vs Develop RAW compare split, filename templates, honest batch ETA, real Results thumbnails, and matching Step 1/Step 2 cards on top of 0.0.12–0.0.20 input/output, format/P3/histogram, and progress polish.
 
 ## Baseline
 
-- AGP 9.4.0
-- built-in Kotlin + Compose compiler plugin 2.4.10
+- AGP 9.5.1
+- built-in Kotlin + Compose compiler plugin 2.4.21
 - compileSdk / targetSdk 37
 - minSdk 26
 - Compose BOM 2026.09.00
@@ -26,6 +26,8 @@ The app supports selecting one or multiple ARW, CR2, or CR3 photos, or a folder,
 Conversion develops Sony ARW and Canon CR2/CR3 locally into upright sRGB JPEGs, preserves supported metadata, and saves to a selected SAF folder. Folder batches run sequentially with a foreground notification and cancellation. Failed files can be retried individually or as a batch using the original source URI, output folder, and recipe; successful and skipped results are retained. Existing JPEGs are skipped; the Q80 floor takes priority over the 3 MiB target. Three supplied Canon EOS R CR3 samples converted end to end on an API 35 x86_64 emulator, and a failed test item recovered through Retry Failed Files. Physical Sony ARW folder-batch validation passed on a Motorola Edge 50 Pro (Android 17, arm64-v8a): six ARW files → six JPEGs (Develop RAW / Standard 4000 px), originals unchanged; Canon CR2/CR3 physical-device coverage remains pending.
 
 The Android UI follows Windows V2 / Quiet Darkroom: graphite and warm paper, safelight accents, bundled Geist fonts, and native interpretations of Shahgul UI V2 processing/results. The workflow is vertical on phones and splits source/output at expanded widths. Optional photo/output details stay out of the primary flow; conversion and cancellation remain in a stable bottom action area. Geist (OFL) and Lucide (ISC) notices are bundled under assets/licenses.
+
+Launcher / splash icon is the same Quiet Darkroom crop-frame mark as Windows (option 03). Source SVG and regen notes live in [`branding/`](branding/).
 
 ## License and support
 
@@ -58,7 +60,7 @@ On low-RAM hosts, prefer a phone over the emulator and build only the device ABI
 .\gradlew.bat :app:installDebug --max-workers=1 --no-daemon -PabiFilters=arm64-v8a "-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8"
 ```
 
-Run these commands from `apps/android`. With a booted emulator or connected phone, run `gradlew.bat :app:connectedDebugAndroidTest --max-workers=2`. Local checks do not require GitHub Actions. The first build downloads Gradle/dependencies and LibRaw; cached builds and conversion run locally. Signed alphas are published through GitHub Releases on this repository; day-to-day builds and signing happen in the maintainer's development repository.
+Run these commands from `apps/android`. With a booted emulator or connected phone, run `gradlew.bat :app:connectedDebugAndroidTest --max-workers=2`. Local checks do not require GitHub Actions. The first build downloads Gradle/dependencies and LibRaw; cached builds and conversion run locally. Signed alphas can be assembled locally with the stable keystore (see `docs/ANDROID-RELEASE.md`); GitHub Actions is optional for release.
 
 The isolated local emulator is `RawConverter_API35`, stored under the ignored `app/build/android-avd` directory. To reuse it from PowerShell in `apps/android`:
 
@@ -90,10 +92,8 @@ Starting conversion opens a dedicated processing screen (Morphe-inspired structu
 
 Back returns to setup without cancelling; View processing and the foreground notification reopen processing while work is active, or Results when finished. Screen recreation retains navigation and active service state. Cancel remains available during processing; completion settles onto Results. Process death still reports interruption instead of silently restarting, and in-memory event history is not persisted across process death.
 
-## Public GitHub prereleases
+## Releases
 
-Signed alphas are published on this repository's Releases page. Do not treat debug-signed APKs as the normal install channel.
+Signed alphas use a stable release key so in-place updates work. Download APKs from [GitHub Releases](https://github.com/shahgul/raw-photo-converter-releases/releases); do not expect APKs in this source tree.
 
-Latest public signed alpha: [Android 0.0.21-alpha](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.21-alpha), `versionCode=1019`. It adds 100% loupe, Camera JPEG vs Develop RAW compare split, filename templates (`{name}` / `{edge}` / `{mode}`), honest batch ETA, real Results thumbnails, and matching Step 1/Step 2 Quiet Darkroom cards. Edge 50 Pro smoke covered Sony folder batch and Compare Develop.
-
-Previous public alphas include [0.0.20-alpha](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.20-alpha) and [0.0.11-alpha](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.11-alpha). APK SHA-256 for 0.0.21-alpha: `8f97981f4acfb74eb14efa91fd1192ec4d972a9b6258e09cda4c2948f702de71`.
+Latest public snapshot: [Android 0.0.22-alpha](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.22-alpha), `versionCode=1020`, pinned to private implementation commit `444ece548a1a52b83cf6ef9be79b6ee8fc6b34b3`. Ships the shared Quiet Darkroom crop-frame launcher icon on top of the 0.0.21 feature set. APK SHA-256: `6fc42fe7dbf0861ee450cb3cf9c6175eb9cbf19209664c57813b3a53756b48ac`.

@@ -4,9 +4,9 @@ A local-first Android RAW converter for Sony ARW and Canon CR2/CR3 files.
 
 ## Current public version
 
-**Android 0.0.21-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.21-alpha).
+**Android 0.0.22-alpha** — [signed APK, LibRaw source, and checksums](https://github.com/shahgul/raw-photo-converter-releases/releases/tag/android-v0.0.22-alpha).
 
-This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. The Android implementation and signed APK are pinned to private commit `90222b66a3997daa59b9c5d179d991fe0c49c60b`. This public snapshot (including the full 0.0.21 screenshot gallery) is pinned to private commit `c541312cddbd1d5f4492f7780635d819f475e7b0`. Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
+This repository is a curated public source snapshot. Development remains in the maintainer's separate development repository. The Android implementation and signed APK are pinned to private commit `444ece548a1a52b83cf6ef9be79b6ee8fc6b34b3` (`versionCode=1020`). Private Git history is not mirrored. APKs are distributed through GitHub Releases, not committed to the source tree.
 
 **Supported:** Sony ARW and Canon CR2/CR3 RAW files on Android 8.0+ (arm64). Other camera formats (Nikon, Fujifilm, etc.) are not supported yet. This is an alpha: expect rough edges and please report them (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
@@ -14,7 +14,7 @@ This repository is a curated public source snapshot. Development remains in the 
 
 ## Android app screenshots
 
-Authentic captures from a Motorola Edge 50 Pro (Android 17) running signed **0.0.21-alpha**.
+Authentic captures from a Motorola Edge 50 Pro (Android 17). In-app gallery screens were captured from signed **0.0.21-alpha**; **0.0.22-alpha** keeps that UI and ships the shared Quiet Darkroom crop-frame launcher icon.
 
 | 01 · Add photos | 02 · Single-photo preview | 03 · Compare Develop |
 |:---:|:---:|:---:|
@@ -23,8 +23,6 @@ Authentic captures from a Motorola Edge 50 Pro (Android 17) running signed **0.0
 | <img src="docs/screenshots/android-photo-details.png" width="230" alt="Expanded EXIF photo details under compare preview" /> | <img src="docs/screenshots/android-multi-photo-queue.png" width="230" alt="Two selected Sony RAW photos with remove actions" /> | <img src="docs/screenshots/android-batch-settings.png" width="230" alt="Recipe with format, gamut, templates, and metadata toggles" /> |
 | **07 · Processing** | **08 · Results** | |
 | <img src="docs/screenshots/android-processing.png" width="230" alt="Processing screen developing two Sony ARWs with ETA" /> | <img src="docs/screenshots/android-results.png" width="230" alt="Results with saved-frame thumbnails and per-file Open Share" /> | |
-
-All eight gallery screens were captured on 2026-11-04 from the signed 0.0.21-alpha install.
 
 Screenshot maintenance: Android UI/workflow changes must trigger a review of this gallery. See [AGENTS.md](AGENTS.md#android-screenshot-maintenance).
 
@@ -42,9 +40,9 @@ Unsupported or unreadable picks are reported without discarding valid selections
 
 ## Alpha validation
 
-The 0.0.21-alpha release was built, linted, unit-tested and signed by the maintainer's release workflow. On a Motorola Edge 50 Pro (Android 17): a six-file Sony ARW folder batch completed with originals unchanged (debug tree), and Compare Develop was smoke-tested on `DSC00135.ARW` after the signed install. This is device smoke evidence, not a formal multi-device validation. Canon CR2/CR3 and WebP/AVIF/Display P3 hardware paths remain pending.
+The 0.0.22-alpha release was built, linted, unit-tested and signed locally by the maintainer (no GitHub Actions). Device smoke evidence from 0.0.21-alpha still applies: on a Motorola Edge 50 Pro (Android 17), a six-file Sony ARW folder batch completed with originals unchanged (debug tree), and Compare Develop was smoke-tested on `DSC00135.ARW`. This is device smoke evidence, not a formal multi-device validation. Canon CR2/CR3 and WebP/AVIF/Display P3 hardware paths remain pending.
 
-The APK SHA-256 is `8f97981f4acfb74eb14efa91fd1192ec4d972a9b6258e09cda4c2948f702de71`. SHA256SUMS.txt covers both the APK and the exact LibRaw 0.22.2 source archive.
+The APK SHA-256 is `6fc42fe7dbf0861ee450cb3cf9c6175eb9cbf19209664c57813b3a53756b48ac`. SHA256SUMS.txt covers both the APK and the exact LibRaw 0.22.2 source archive.
 
 ## Build
 
@@ -52,4 +50,4 @@ Open `apps/android` in Android Studio. Install Android SDK Platform 37.0, NDK 30
 
 ## License and contributions
 
-Project-owned source is MPL-2.0; see [LICENSE](LICENSE). LibRaw (CDDL), Geist (OFL), and Lucide (ISC) retain their bundled notices under `apps/android/app/src/main/assets/licenses`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Optional voluntary support is planned and does not unlock converter features.
+Project-owned source is MPL-2.0; see [LICENSE](LICENSE). LibRaw (CDDL), Geist (OFL), and Lucide (ISC) retain their bundled notices under `apps/android/app/src/main/assets/licenses`. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [docs/LICENSING.md](docs/LICENSING.md). Optional voluntary support is planned and does not unlock converter features.
